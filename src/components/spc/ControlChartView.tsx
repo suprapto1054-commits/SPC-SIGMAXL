@@ -40,25 +40,31 @@ export const ControlChartView: React.FC<ControlChartViewProps> = ({
   const innerHeight = height - margin.top - margin.bottom;
 
   // Calculate Y domain to encompass all data, 3-sigma limits, and optional specs
-  const allYValues = points.map((p) => p.value);
-  allYValues.push(zones.plus3Sigma, zones.minus3Sigma, zones.centerLine);
-  if (specificationLimits?.usl) allYValues.push(specificationLimits.usl);
-  if (specificationLimits?.lsl) allYValues.push(specificationLimits.lsl);
+  const rawYValues = points.map((p) => p.value);
+  rawYValues.push(zones.plus3Sigma, zones.minus3Sigma, zones.centerLine);
+  if (specificationLimits?.usl != null) rawYValues.push(specificationLimits.usl);
+  if (specificationLimits?.lsl != null) rawYValues.push(specificationLimits.lsl);
 
-  const minY = Math.min(...allYValues);
-  const maxY = Math.max(...allYValues);
-  const yPadding = (maxY - minY) * 0.12 || 1;
+  const cleanY = rawYValues.filter((v) => typeof v === 'number' && !isNaN(v) && isFinite(v));
+  const minY = cleanY.length > 0 ? Math.min(...cleanY) : 0;
+  const maxY = cleanY.length > 0 ? Math.max(...cleanY) : 100;
+  const yRange = maxY - minY;
+  const yPadding = yRange > 0 ? yRange * 0.12 : Math.max(Math.abs(maxY) * 0.1, 1);
   const yDomainMin = minY - yPadding;
   const yDomainMax = maxY + yPadding;
+  const yDomainSpread = yDomainMax - yDomainMin || 1;
 
   // Coordinate transforms
   const scaleY = (val: number) => {
-    return margin.top + innerHeight - ((val - yDomainMin) / (yDomainMax - yDomainMin)) * innerHeight;
+    return margin.top + innerHeight - ((val - yDomainMin) / yDomainSpread) * innerHeight;
   };
 
   const scaleX = (idx: number) => {
     const totalPoints = points.length;
-    const baseStep = totalPoints > 1 ? innerWidth / (totalPoints - 1) : innerWidth / 2;
+    if (totalPoints <= 1) {
+      return margin.left + innerWidth / 2 + panOffset;
+    }
+    const baseStep = innerWidth / (totalPoints - 1);
     const effectiveStep = baseStep * zoomLevel;
     return margin.left + (idx - 1) * effectiveStep + panOffset;
   };
@@ -96,16 +102,16 @@ export const ControlChartView: React.FC<ControlChartViewProps> = ({
   return (
     <div className="space-y-4" ref={containerRef}>
       {/* Chart Canvas Card */}
-      <div className="overflow-hidden rounded border border-slate-800 bg-[#020617] shadow-xs">
+      <div className="overflow-hidden rounded border border-slate-300 bg-white shadow-xs dark:border-slate-800 dark:bg-[#090d16]">
         {/* Top Toolbar */}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 bg-slate-900/40 px-3.5 py-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-3.5 py-2.5 dark:border-slate-800 dark:bg-slate-900/40">
           <div className="flex items-center gap-2.5">
-            <div className="h-2 w-2 rounded-xs bg-sky-400"></div>
+            <div className="h-2.5 w-2.5 rounded-xs bg-cyan-500"></div>
             <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-white font-mono">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-slate-900 dark:text-white font-mono">
                 {primaryChart.title}
               </h3>
-              <p className="text-[10px] font-mono text-slate-500">
+              <p className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
                 SAMPLE_SIZE: N={result.n} | SUBGROUP: n={result.subgroupSize} | SIGMA_W: {result.sigmaWithin.toFixed(3)}
               </p>
             </div>
@@ -113,17 +119,17 @@ export const ControlChartView: React.FC<ControlChartViewProps> = ({
 
           <div className="flex items-center gap-2">
             {/* Zoom Controls */}
-            <div className="flex items-center rounded border border-slate-800 bg-slate-900/90 p-0.5 font-mono text-xs">
+            <div className="flex items-center rounded border border-slate-300 bg-white p-0.5 font-mono text-xs dark:border-slate-800 dark:bg-slate-900/90">
               <button
                 onClick={() => setZoomLevel((z) => Math.min(z + 0.3, 3.5))}
-                className="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-white"
+                className="rounded p-1 text-slate-600 hover:bg-slate-200 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
                 title="Zoom In"
               >
                 <ZoomIn className="w-3 h-3" />
               </button>
               <button
                 onClick={() => setZoomLevel((z) => Math.max(z - 0.3, 1))}
-                className="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-white"
+                className="rounded p-1 text-slate-600 hover:bg-slate-200 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
                 title="Zoom Out"
               >
                 <ZoomOut className="w-3 h-3" />
@@ -133,7 +139,7 @@ export const ControlChartView: React.FC<ControlChartViewProps> = ({
                   setZoomLevel(1);
                   setPanOffset(0);
                 }}
-                className="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-white"
+                className="rounded p-1 text-slate-600 hover:bg-slate-200 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
                 title="Reset View"
               >
                 <RotateCcw className="w-3 h-3" />
@@ -143,9 +149,9 @@ export const ControlChartView: React.FC<ControlChartViewProps> = ({
             {/* Export Button */}
             <button
               onClick={handleExportPNG}
-              className="flex items-center gap-1 rounded border border-slate-800 bg-slate-900/90 px-2 py-1 text-[10px] font-mono font-bold text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+              className="flex items-center gap-1 rounded border border-slate-300 bg-white px-2 py-1 text-[10px] font-mono font-bold text-slate-700 hover:bg-slate-100 hover:text-slate-900 dark:border-slate-800 dark:bg-slate-900/90 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white transition-colors"
             >
-              <Download className="w-3 h-3 text-sky-400" />
+              <Download className="w-3 h-3 text-cyan-600 dark:text-cyan-400" />
               PNG
             </button>
           </div>
@@ -606,10 +612,16 @@ export const ControlChartView: React.FC<ControlChartViewProps> = ({
                 const secInnerWidth = width - secMargin.left - secMargin.right;
                 const secInnerHeight = secHeight - secMargin.top - secMargin.bottom;
 
-                const mrMax = Math.max(...secondaryChart.points.map((p) => p.value), secondaryChart.ucl) * 1.15;
+                const rawMrVals = secondaryChart.points.map((p) => p.value);
+                const cleanMrVals = rawMrVals.filter((v) => typeof v === 'number' && !isNaN(v) && isFinite(v));
+                const mrMax = Math.max(0, ...cleanMrVals, secondaryChart.ucl || 0) * 1.15 || 10;
                 const secScaleY = (v: number) => secMargin.top + secInnerHeight - (v / (mrMax || 1)) * secInnerHeight;
                 const secScaleX = (idx: number) => {
-                  const step = secondaryChart.points.length > 1 ? secInnerWidth / (secondaryChart.points.length - 1) : secInnerWidth / 2;
+                  const totalSecPoints = secondaryChart.points.length;
+                  if (totalSecPoints <= 1) {
+                    return secMargin.left + secInnerWidth / 2;
+                  }
+                  const step = secInnerWidth / (totalSecPoints - 1);
                   return secMargin.left + (idx - 1) * step;
                 };
 

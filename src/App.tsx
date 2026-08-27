@@ -14,6 +14,7 @@ import { DashboardOverview } from './components/dashboard/DashboardOverview';
 import { ControlChartView } from './components/spc/ControlChartView';
 import { TestRuleTable } from './components/spc/TestRuleTable';
 import { CapabilityView } from './components/capability/CapabilityView';
+import { MsaMainView } from './components/msa/MsaMainView';
 import { DescriptiveStatsView } from './components/statistics/DescriptiveStatsView';
 import { HistogramView } from './components/statistics/HistogramView';
 import { ParetoView } from './components/statistics/ParetoView';
@@ -116,7 +117,7 @@ export function App() {
   };
 
   return (
-    <div className={`min-h-screen flex flex-col bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100 ${theme}`}>
+    <div className={`min-h-screen flex flex-col bg-slate-50 text-slate-900 dark:bg-[#050912] dark:text-slate-100 ${theme}`}>
       {/* Top Header */}
       <Header
         currentDataset={currentDataset}
@@ -218,6 +219,11 @@ export function App() {
               initialSpecLimits={activeSpecs}
               onUpdateSpecLimits={handleUpdateSpecLimits}
             />
+          )}
+
+          {/* TAB 3.5: MEASUREMENT SYSTEM ANALYSIS (MSA & Gage R&R) */}
+          {activeTab === 'msa' && (
+            <MsaMainView />
           )}
 
           {/* TAB 4: DESCRIPTIVE STATISTICS */}

@@ -15,19 +15,19 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
 }) => {
   const config = {
     IN_CONTROL: {
-      bg: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+      bg: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30',
       dot: 'bg-emerald-500',
       icon: CheckCircle2,
       label: 'IN STATISTICAL CONTROL',
     },
     WARNING: {
-      bg: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
+      bg: 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30',
       dot: 'bg-amber-500',
       icon: AlertTriangle,
       label: 'TREND / RUN WARNING',
     },
     OUT_OF_CONTROL: {
-      bg: 'bg-rose-500/10 text-rose-400 border-rose-500/30',
+      bg: 'bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/30',
       dot: 'bg-rose-500',
       icon: XCircle,
       label: 'OUT OF CONTROL',

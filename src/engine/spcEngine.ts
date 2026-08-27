@@ -70,7 +70,50 @@ export function calculateIMRChart(
   const n = clean.length;
 
   if (n < 2) {
-    throw new Error('I-MR Chart requires at least 2 valid observations.');
+    const fallbackMean = n === 1 ? clean[0] : 0;
+    const fallbackZones = calculateSigmaZones(fallbackMean, 0);
+    const fallbackPoints: ChartPoint[] = n === 1 ? [{
+      index: 1,
+      label: labels && labels[0] ? labels[0] : '#1',
+      value: clean[0],
+      zScore: 0,
+      isViolated: false,
+      violations: [],
+      zone: 'Zone C+',
+    }] : [];
+
+    return {
+      chartType: 'I-MR',
+      columnName,
+      n,
+      subgroupSize: 1,
+      mean: fallbackMean,
+      sigmaWithin: 0,
+      sigmaOverall: 0,
+      primaryChart: {
+        title: `Individuals (I) Chart — ${columnName}`,
+        points: fallbackPoints,
+        zones: fallbackZones,
+        ucl: fallbackMean,
+        cl: fallbackMean,
+        lcl: fallbackMean,
+        yAxisLabel: 'Individual Value',
+      },
+      secondaryChart: {
+        title: `Moving Range (MR) Chart (span=2)`,
+        points: [],
+        ucl: 0,
+        cl: 0,
+        lcl: 0,
+        yAxisLabel: 'Moving Range',
+      },
+      ruleViolations: [],
+      ruleSummaries: evaluateNelsonTestRules([], 0, 0).ruleSummaries,
+      status: 'IN_CONTROL',
+      statusMessage: n === 1
+        ? 'Single observation recorded. At least 2 valid numeric observations are required to calculate Moving Range and 3-sigma control limits.'
+        : 'No valid numeric observations found in the selected column.',
+    };
   }
 
   // Calculate Mean
@@ -207,7 +250,38 @@ export function calculateXbarRChart(
 
   const numSubgroups = Math.floor(clean.length / subSize);
   if (numSubgroups < 2) {
-    throw new Error(`Xbar-R chart requires at least 2 full subgroups of size ${subSize}.`);
+    const grandMean = clean.length > 0 ? clean.reduce((a, b) => a + b, 0) / clean.length : 0;
+    const zones = calculateSigmaZones(grandMean, 0);
+    return {
+      chartType: 'Xbar-R',
+      columnName,
+      n: clean.length,
+      subgroupSize: subSize,
+      mean: grandMean,
+      sigmaWithin: 0,
+      sigmaOverall: 0,
+      primaryChart: {
+        title: `Xbar Chart (Subgroup Size n=${subSize})`,
+        points: [],
+        zones,
+        ucl: grandMean,
+        cl: grandMean,
+        lcl: grandMean,
+        yAxisLabel: 'Subgroup Mean (X̄)',
+      },
+      secondaryChart: {
+        title: `Range (R) Chart (n=${subSize})`,
+        points: [],
+        ucl: 0,
+        cl: 0,
+        lcl: 0,
+        yAxisLabel: 'Subgroup Range (R)',
+      },
+      ruleViolations: [],
+      ruleSummaries: evaluateNelsonTestRules([], 0, 0).ruleSummaries,
+      status: 'IN_CONTROL',
+      statusMessage: `Xbar-R chart requires at least 2 full subgroups of size ${subSize} (found ${clean.length} observations / ${numSubgroups} subgroups).`,
+    };
   }
 
   const subgroupMeans: number[] = [];
@@ -338,7 +412,38 @@ export function calculateXbarSChart(
 
   const numSubgroups = Math.floor(clean.length / subSize);
   if (numSubgroups < 2) {
-    throw new Error(`Xbar-S chart requires at least 2 full subgroups of size ${subSize}.`);
+    const grandMean = clean.length > 0 ? clean.reduce((a, b) => a + b, 0) / clean.length : 0;
+    const zones = calculateSigmaZones(grandMean, 0);
+    return {
+      chartType: 'Xbar-S',
+      columnName,
+      n: clean.length,
+      subgroupSize: subSize,
+      mean: grandMean,
+      sigmaWithin: 0,
+      sigmaOverall: 0,
+      primaryChart: {
+        title: `Xbar Chart (n=${subSize})`,
+        points: [],
+        zones,
+        ucl: grandMean,
+        cl: grandMean,
+        lcl: grandMean,
+        yAxisLabel: 'Subgroup Mean (X̄)',
+      },
+      secondaryChart: {
+        title: `Standard Deviation (S) Chart (n=${subSize})`,
+        points: [],
+        ucl: 0,
+        cl: 0,
+        lcl: 0,
+        yAxisLabel: 'Subgroup Std Dev (S)',
+      },
+      ruleViolations: [],
+      ruleSummaries: evaluateNelsonTestRules([], 0, 0).ruleSummaries,
+      status: 'IN_CONTROL',
+      statusMessage: `Xbar-S chart requires at least 2 full subgroups of size ${subSize} (found ${clean.length} observations / ${numSubgroups} subgroups).`,
+    };
   }
 
   const subgroupMeans: number[] = [];
@@ -459,12 +564,46 @@ export function calculateAttributeChart(
   sampleSizes?: number[],
   columnName = 'Defect Counts'
 ): SpcCalculationResult {
-  const n = defectValues.length;
+  const cleanDefects = defectValues.filter((x) => typeof x === 'number' && !isNaN(x) && isFinite(x));
+  const n = cleanDefects.length;
+  const defaultSampleSize = 50;
+
   if (n < 2) {
-    throw new Error(`${chartType.toUpperCase()} chart requires at least 2 observations.`);
+    const cl = n === 1 ? cleanDefects[0] : 0;
+    const zones = calculateSigmaZones(cl, 0);
+    return {
+      chartType,
+      columnName,
+      n,
+      subgroupSize: sampleSizes?.[0] || defaultSampleSize,
+      mean: cl,
+      sigmaWithin: 0,
+      sigmaOverall: 0,
+      primaryChart: {
+        title: `${chartType.toUpperCase()} Attribute Control Chart — ${columnName}`,
+        points: [],
+        zones,
+        ucl: cl,
+        cl,
+        lcl: cl,
+        yAxisLabel: chartType === 'p' ? 'Fraction Nonconforming' : chartType === 'np' ? 'Defectives (np)' : chartType === 'c' ? 'Defects (c)' : 'Defects/Unit (u)',
+      },
+      ruleViolations: [],
+      ruleSummaries: [
+        {
+          ruleId: 'Rule 1',
+          name: 'Rule 1: Control Limit Exceedance',
+          description: 'Observation exceeds calculated 3-sigma control limits.',
+          status: 'PASS',
+          violationCount: 0,
+          violatedPoints: [],
+        },
+      ],
+      status: 'IN_CONTROL',
+      statusMessage: `Attribute chart requires at least 2 observations (found ${n}).`,
+    };
   }
 
-  const defaultSampleSize = 50;
   const sizes = sampleSizes && sampleSizes.length === n ? sampleSizes : Array(n).fill(defaultSampleSize);
 
   let cl = 0;
@@ -667,21 +806,60 @@ export interface CalculateSpcOptions {
 }
 
 export function calculateSpcChart(options: CalculateSpcOptions): SpcCalculationResult {
-  const { values, chartType, columnName = 'Measurement', subgroupSize = 5 } = options;
+  const { values = [], chartType, columnName = 'Measurement', subgroupSize = 5, specificationLimits } = options;
 
-  switch (chartType) {
-    case 'Xbar-R':
-      return calculateXbarRChart(values, subgroupSize, columnName);
-    case 'Xbar-S':
-      return calculateXbarSChart(values, subgroupSize, columnName);
-    case 'p':
-    case 'np':
-    case 'c':
-    case 'u':
-      return calculateAttributeChart(chartType, values, Array(values.length).fill(subgroupSize), columnName);
-    case 'I-MR':
-    default:
-      return calculateIMRChart(values, columnName);
+  let result: SpcCalculationResult;
+  try {
+    switch (chartType) {
+      case 'Xbar-R':
+        result = calculateXbarRChart(values, subgroupSize, columnName);
+        break;
+      case 'Xbar-S':
+        result = calculateXbarSChart(values, subgroupSize, columnName);
+        break;
+      case 'p':
+      case 'np':
+      case 'c':
+      case 'u':
+        result = calculateAttributeChart(chartType, values, Array(values.length).fill(subgroupSize), columnName);
+        break;
+      case 'I-MR':
+      default:
+        result = calculateIMRChart(values, columnName);
+        break;
+    }
+  } catch (err: any) {
+    const clean = values.filter((x) => typeof x === 'number' && !isNaN(x) && isFinite(x));
+    const fallbackMean = clean.length > 0 ? clean.reduce((a, b) => a + b, 0) / clean.length : 0;
+    const fallbackZones = calculateSigmaZones(fallbackMean, 0);
+    result = {
+      chartType,
+      columnName,
+      n: clean.length,
+      subgroupSize,
+      mean: fallbackMean,
+      sigmaWithin: 0,
+      sigmaOverall: 0,
+      primaryChart: {
+        title: `${chartType} Control Chart — ${columnName}`,
+        points: [],
+        zones: fallbackZones,
+        ucl: fallbackMean,
+        cl: fallbackMean,
+        lcl: fallbackMean,
+        yAxisLabel: 'Measurement Value',
+      },
+      ruleViolations: [],
+      ruleSummaries: evaluateNelsonTestRules([], 0, 0).ruleSummaries,
+      status: 'IN_CONTROL',
+      statusMessage: err?.message || 'Unable to calculate control limits for current data selection.',
+    };
   }
+
+  if (specificationLimits) {
+    result.specificationLimits = specificationLimits;
+  }
+
+  return result;
 }
 
