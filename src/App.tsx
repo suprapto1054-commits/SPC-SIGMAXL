@@ -200,6 +200,7 @@ export function App() {
             <EnergyMonitoringView
               dataset={currentDataset}
               onNavigateToTab={setActiveTab}
+              onSelectDataset={(ds) => setActiveDatasetId(ds.id)}
             />
           )}
 

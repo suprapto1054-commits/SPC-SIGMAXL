@@ -129,6 +129,180 @@ export const SAMPLE_DATASETS: Dataset[] = [
     ],
   },
   {
+    id: 'ds-energy-daily',
+    name: '⚡ Daily Plant Energy & Multi-Utility Benchmark (30 Days - kWh, m³, MMBTU, Tons)',
+    description: 'Daily continuous utility tracking over a 30-day manufacturing month. Captures daily aggregate power consumption (kWh), industrial water intake (m³), boiler natural gas (MMBTU), and gross plant throughput (Tons) for diurnal trend analysis and daily cost tracking.',
+    rowCount: 30,
+    createdAt: '2026-08-27',
+    metadata: {
+      equipment: 'Plant-Wide Utility Incomers (Power Substation, Gas Metering, Deep Well Water)',
+      line: 'All Manufacturing Units & Utilities',
+      process: 'Daily Energy Balance & Diurnal Cost Management',
+      shift: 'Daily Aggregate (24-Hour Rolls)',
+      operator: 'Chief Energy Manager & Operations Bureau',
+      materialLot: 'DAILY-EGW-30D-LOG',
+      product: 'Monthly Operating Cycle SEC & Cost Optimization',
+    },
+    columns: [
+      {
+        id: 'timestamp_day',
+        name: 'Timestamp_Day',
+        type: 'categorical',
+        values: Array.from({ length: 30 }, (_, i) => `Day ${(i + 1).toString().padStart(2, '0')}`),
+      },
+      {
+        id: 'electricity_daily_kwh',
+        name: 'Electricity_Consumption_kWh',
+        type: 'numeric',
+        values: [
+          18450, 18620, 18390, 18850, 19120, 19450, 15200, 14900, 18900, 19250,
+          19400, 19580, 19720, 19850, 15600, 15100, 18750, 19100, 19350, 19480,
+          19650, 19800, 15400, 15050, 18950, 19280, 19520, 19680, 19820, 19950,
+        ],
+      },
+      {
+        id: 'water_daily_m3',
+        name: 'Water_Consumption_m3',
+        type: 'numeric',
+        values: [
+          925, 938, 918, 945, 960, 978, 760, 745, 948, 965,
+          972, 982, 990, 996, 780, 755, 940, 958, 970, 976,
+          985, 992, 770, 752, 950, 967, 979, 987, 994, 1002,
+        ],
+      },
+      {
+        id: 'gas_daily_mmbtu',
+        name: 'Gas_Consumption_MMBTU',
+        type: 'numeric',
+        values: [
+          138.5, 139.8, 137.6, 141.2, 143.4, 145.8, 114.0, 111.5, 142.0, 144.5,
+          145.6, 147.0, 148.2, 149.0, 117.0, 113.2, 140.8, 143.2, 145.0, 146.1,
+          147.5, 148.6, 115.5, 112.8, 142.5, 144.8, 146.7, 147.9, 148.8, 150.1,
+        ],
+      },
+      {
+        id: 'prod_daily_tons',
+        name: 'Production_Volume_Tons',
+        type: 'numeric',
+        values: [
+          1250, 1265, 1245, 1280, 1300, 1320, 1020, 1005, 1285, 1308,
+          1318, 1330, 1340, 1350, 1050, 1015, 1270, 1295, 1312, 1322,
+          1335, 1345, 1035, 1018, 1288, 1310, 1326, 1337, 1346, 1355,
+        ],
+      },
+      {
+        id: 'sec_elec_daily',
+        name: 'Specific_Electricity_kWh_per_Ton',
+        type: 'numeric',
+        values: [
+          14.76, 14.72, 14.77, 14.73, 14.71, 14.73, 14.90, 14.83, 14.71, 14.72,
+          14.72, 14.72, 14.72, 14.70, 14.86, 14.88, 14.76, 14.75, 14.75, 14.74,
+          14.72, 14.72, 14.88, 14.78, 14.71, 14.72, 14.72, 14.72, 14.73, 14.72,
+        ],
+      },
+      {
+        id: 'daily_utility_cost',
+        name: 'Daily_Utility_Cost_USD',
+        type: 'numeric',
+        values: [
+          5426, 5477, 5408, 5543, 5624, 5721, 4467, 4378, 5558, 5661,
+          5705, 5758, 5800, 5837, 4585, 4437, 5514, 5617, 5691, 5729,
+          5780, 5824, 4526, 4423, 5573, 5670, 5741, 5788, 5830, 5868,
+        ],
+      },
+    ],
+  },
+  {
+    id: 'ds-energy-monthly',
+    name: '⚡ Monthly ISO 50001 Baseline & Target Benchmark (12 Months - kWh, m³, MMBTU, Tons)',
+    description: '12-Month annual corporate utility baseline for ISO 50001 Energy Management Systems (EnMS). Standardized monthly aggregated consumption of electricity (kWh), industrial water (m³), natural gas (MMBTU), and total plant finished production (Tons) with weather and seasonal baseline regressions.',
+    rowCount: 12,
+    createdAt: '2026-08-27',
+    metadata: {
+      equipment: 'Enterprise Plant Incomers & Sub-meters',
+      line: 'Facility-Wide Master Utility System',
+      process: 'Annual ISO 50001 Energy Baseline (EnB) & Performance Indicators (EnPI)',
+      shift: 'Monthly Audited Accounting',
+      operator: 'Corporate Sustainability & Energy Committee',
+      materialLot: 'ANNUAL-ISO50001-2025-2026',
+      product: 'Annual Corporate Carbon & Energy Benchmark',
+    },
+    columns: [
+      {
+        id: 'timestamp_month',
+        name: 'Timestamp_Month',
+        type: 'categorical',
+        values: [
+          'January', 'February', 'March', 'April', 'May', 'June',
+          'July', 'August', 'September', 'October', 'November', 'December',
+        ],
+      },
+      {
+        id: 'electricity_monthly_kwh',
+        name: 'Electricity_Consumption_kWh',
+        type: 'numeric',
+        values: [
+          545000, 520000, 565000, 578000, 610000, 642000,
+          665000, 672000, 630000, 595000, 560000, 538000,
+        ],
+      },
+      {
+        id: 'water_monthly_m3',
+        name: 'Water_Consumption_m3',
+        type: 'numeric',
+        values: [
+          27250, 26000, 28250, 28900, 30500, 32100,
+          33250, 33600, 31500, 29750, 28000, 26900,
+        ],
+      },
+      {
+        id: 'gas_monthly_mmbtu',
+        name: 'Gas_Consumption_MMBTU',
+        type: 'numeric',
+        values: [
+          4250, 4100, 4380, 4460, 4650, 4850,
+          4980, 5020, 4780, 4580, 4350, 4210,
+        ],
+      },
+      {
+        id: 'prod_monthly_tons',
+        name: 'Production_Volume_Tons',
+        type: 'numeric',
+        values: [
+          37000, 35400, 38500, 39400, 41500, 43700,
+          45200, 45700, 42900, 40500, 38100, 36600,
+        ],
+      },
+      {
+        id: 'sec_elec_monthly',
+        name: 'Specific_Electricity_kWh_per_Ton',
+        type: 'numeric',
+        values: [
+          14.73, 14.69, 14.68, 14.67, 14.70, 14.69,
+          14.71, 14.70, 14.69, 14.69, 14.70, 14.70,
+        ],
+      },
+      {
+        id: 'monthly_utility_cost',
+        name: 'Monthly_Utility_Cost_USD',
+        type: 'numeric',
+        values: [
+          161475, 154100, 167230, 170850, 179825, 189195,
+          195885, 197830, 185630, 175785, 165350, 159015,
+        ],
+      },
+      {
+        id: 'monthly_value_add',
+        name: 'Monthly_Value_Add_USD',
+        type: 'numeric',
+        values: [
+          20188525, 19315900, 21007770, 21499150, 22645175, 23845805,
+          24664115, 24937170, 23409370, 22099215, 20789650, 19970985,
+        ],
+      },
+    ],
+  },
+  {
     id: 'ds-energy-electricity',
     name: '⚡ Substation Feeder: Electricity (kWh) & Production Volume (Tons)',
     description: 'Main incoming 11kV electrical feeder logging total electricity (kWh), peak demand (kW), power factor, and production output (Tons) across 40 continuous intervals.',

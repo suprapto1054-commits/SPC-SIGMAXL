@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Dataset } from '../../types/spc';
+import { SAMPLE_DATASETS } from '../../data/sampleDatasets';
 import {
   Zap,
   Droplet,
@@ -19,6 +20,10 @@ import {
   CheckCircle2,
   RefreshCw,
   Sparkles,
+  Calendar,
+  Clock,
+  CalendarDays,
+  Check,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -44,13 +49,37 @@ import { exportToCSV } from '../../utils/exportUtils';
 interface EnergyMonitoringViewProps {
   dataset: Dataset;
   onNavigateToTab?: (tab: string) => void;
+  onSelectDataset?: (dataset: Dataset) => void;
 }
+
+export type EnergyTimeResolution = 'hourly' | 'daily' | 'monthly';
 
 export const EnergyMonitoringView: React.FC<EnergyMonitoringViewProps> = ({
   dataset,
   onNavigateToTab,
+  onSelectDataset,
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'overview' | 'sec-trends' | 'regression' | 'simulation' | 'datagrid'>('overview');
+
+  // Detect default time resolution from dataset
+  const defaultResolution = useMemo<EnergyTimeResolution>(() => {
+    const dsName = (dataset.name || '').toLowerCase();
+    const colNames = dataset.columns.map((c) => c.name.toLowerCase()).join(' ');
+    if (dataset.id === 'ds-energy-monthly' || dsName.includes('monthly') || colNames.includes('month')) {
+      return 'monthly';
+    }
+    if (dataset.id === 'ds-energy-daily' || dsName.includes('daily') || colNames.includes('day') || colNames.includes('timestamp_day')) {
+      return 'daily';
+    }
+    return 'hourly';
+  }, [dataset]);
+
+  const [timeResolution, setTimeResolution] = useState<EnergyTimeResolution>(defaultResolution);
+
+  // Sync when dataset changes
+  useEffect(() => {
+    setTimeResolution(defaultResolution);
+  }, [defaultResolution]);
 
   // Interactive Tariff & Price Simulator State
   const [elecTariff, setElecTariff] = useState<number>(0.12); // $/kWh
@@ -58,48 +87,176 @@ export const EnergyMonitoringView: React.FC<EnergyMonitoringViewProps> = ({
   const [waterTariff, setWaterTariff] = useState<number>(2.20); // $/m3
   const [productPrice, setProductPrice] = useState<number>(550); // $/Ton
 
-  // Parse columns dynamically from current dataset or default fallback
-  const telemetryData = useMemo(() => {
+  // Parse raw telemetry data
+  const rawTelemetry = useMemo(() => {
     const cols = dataset.columns;
     const len = dataset.rowCount || (cols[0]?.values.length ?? 0);
 
-    // Look for appropriate column names
-    const timeCol = cols.find((c) => /time|hour|shift|log|interval/i.test(c.name))?.values || Array.from({ length: len }, (_, i) => `H-${i + 1}`);
+    const timeCol = cols.find((c) => /time|hour|shift|log|interval|day|month/i.test(c.name))?.values || Array.from({ length: len }, (_, i) => `Log-${i + 1}`);
     const elecCol = cols.find((c) => /elec|power|kwh|kw/i.test(c.name))?.values as number[] | undefined;
     const waterCol = cols.find((c) => /water|intake|m3/i.test(c.name))?.values as number[] | undefined;
     const gasCol = cols.find((c) => /gas|mmbtu|thermal/i.test(c.name))?.values as number[] | undefined;
     const prodCol = cols.find((c) => /prod|output|volume|ton|steam/i.test(c.name))?.values as number[] | undefined;
 
     return Array.from({ length: len }, (_, i) => {
-      const timestamp = String(timeCol[i] ?? `H-${i + 1}`);
-      // Normalized values
+      const timestamp = String(timeCol[i] ?? `Log-${i + 1}`);
       const elecKwh = typeof elecCol?.[i] === 'number' ? elecCol[i] : 650 + (i % 12) * 20;
       const waterM3 = typeof waterCol?.[i] === 'number' ? waterCol[i] : 32 + (i % 8) * 1.8;
       const gasMmbtu = typeof gasCol?.[i] === 'number' ? gasCol[i] : 4.8 + (i % 10) * 0.25;
       const prodTons = typeof prodCol?.[i] === 'number' ? prodCol[i] : 44 + (i % 12) * 1.5;
 
+      return {
+        id: i + 1,
+        timestamp,
+        elecKwh,
+        waterM3,
+        gasMmbtu,
+        prodTons,
+      };
+    });
+  }, [dataset]);
+
+  // Aggregate or process according to selected time resolution
+  const telemetryData = useMemo(() => {
+    const isDatasetDaily = dataset.id === 'ds-energy-daily' || dataset.name.toLowerCase().includes('daily');
+    const isDatasetMonthly = dataset.id === 'ds-energy-monthly' || dataset.name.toLowerCase().includes('monthly');
+
+    // Case 1: Dataset is already at requested resolution or Raw Hourly is requested
+    if (
+      (timeResolution === 'hourly') ||
+      (timeResolution === 'daily' && isDatasetDaily) ||
+      (timeResolution === 'monthly' && isDatasetMonthly)
+    ) {
+      return rawTelemetry.map((row, i) => {
+        const secElec = row.prodTons > 0 ? Number((row.elecKwh / row.prodTons).toFixed(2)) : 0;
+        const secGas = row.prodTons > 0 ? Number((row.gasMmbtu / row.prodTons).toFixed(3)) : 0;
+        const secWater = row.prodTons > 0 ? Number((row.waterM3 / row.prodTons).toFixed(3)) : 0;
+
+        const totalEnergyMmbtu = Number((row.gasMmbtu + row.elecKwh * 0.003412).toFixed(2));
+        const totalEnergyKwhEq = Number((row.elecKwh + row.gasMmbtu * 293.07).toFixed(1));
+
+        const costElec = row.elecKwh * elecTariff;
+        const costGas = row.gasMmbtu * gasTariff;
+        const costWater = row.waterM3 * waterTariff;
+        const totalUtilityCost = Number((costElec + costGas + costWater).toFixed(2));
+
+        const grossRevenue = Number((row.prodTons * productPrice).toFixed(2));
+        const netValueAdd = Number((grossRevenue - totalUtilityCost).toFixed(2));
+        const utilityCostRatioPct = grossRevenue > 0 ? Number(((totalUtilityCost / grossRevenue) * 100).toFixed(2)) : 0;
+
+        return {
+          id: i + 1,
+          timestamp: row.timestamp,
+          elecKwh: row.elecKwh,
+          waterM3: row.waterM3,
+          gasMmbtu: row.gasMmbtu,
+          prodTons: row.prodTons,
+          secElec,
+          secGas,
+          secWater,
+          totalEnergyMmbtu,
+          totalEnergyKwhEq,
+          costElec,
+          costGas,
+          costWater,
+          totalUtilityCost,
+          grossRevenue,
+          netValueAdd,
+          utilityCostRatioPct,
+        };
+      });
+    }
+
+    // Case 2: Roll up Hourly -> Daily (group by 24h buckets or Day tag)
+    if (timeResolution === 'daily') {
+      const bucketSize = 24;
+      const numDays = Math.max(1, Math.ceil(rawTelemetry.length / bucketSize));
+      const dailyRows = [];
+
+      for (let d = 0; d < numDays; d++) {
+        const slice = rawTelemetry.slice(d * bucketSize, (d + 1) * bucketSize);
+        if (slice.length === 0) continue;
+
+        const elecKwh = slice.reduce((sum, r) => sum + r.elecKwh, 0);
+        const waterM3 = slice.reduce((sum, r) => sum + r.waterM3, 0);
+        const gasMmbtu = slice.reduce((sum, r) => sum + r.gasMmbtu, 0);
+        const prodTons = slice.reduce((sum, r) => sum + r.prodTons, 0);
+
+        const secElec = prodTons > 0 ? Number((elecKwh / prodTons).toFixed(2)) : 0;
+        const secGas = prodTons > 0 ? Number((gasMmbtu / prodTons).toFixed(3)) : 0;
+        const secWater = prodTons > 0 ? Number((waterM3 / prodTons).toFixed(3)) : 0;
+
+        const totalEnergyMmbtu = Number((gasMmbtu + elecKwh * 0.003412).toFixed(2));
+        const totalEnergyKwhEq = Number((elecKwh + gasMmbtu * 293.07).toFixed(1));
+
+        const costElec = elecKwh * elecTariff;
+        const costGas = gasMmbtu * gasTariff;
+        const costWater = waterM3 * waterTariff;
+        const totalUtilityCost = Number((costElec + costGas + costWater).toFixed(2));
+
+        const grossRevenue = Number((prodTons * productPrice).toFixed(2));
+        const netValueAdd = Number((grossRevenue - totalUtilityCost).toFixed(2));
+        const utilityCostRatioPct = grossRevenue > 0 ? Number(((totalUtilityCost / grossRevenue) * 100).toFixed(2)) : 0;
+
+        dailyRows.push({
+          id: d + 1,
+          timestamp: `Day ${(d + 1).toString().padStart(2, '0')} (Rollup)`,
+          elecKwh,
+          waterM3,
+          gasMmbtu,
+          prodTons,
+          secElec,
+          secGas,
+          secWater,
+          totalEnergyMmbtu,
+          totalEnergyKwhEq,
+          costElec,
+          costGas,
+          costWater,
+          totalUtilityCost,
+          grossRevenue,
+          netValueAdd,
+          utilityCostRatioPct,
+        });
+      }
+      return dailyRows;
+    }
+
+    // Case 3: Roll up to Monthly
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const chunkSize = Math.max(1, Math.floor(rawTelemetry.length / Math.min(12, rawTelemetry.length)));
+    const monthlyRows = [];
+    const targetMonths = Math.min(12, Math.ceil(rawTelemetry.length / chunkSize));
+
+    for (let m = 0; m < targetMonths; m++) {
+      const slice = rawTelemetry.slice(m * chunkSize, (m + 1) * chunkSize);
+      if (slice.length === 0) continue;
+
+      const factor = isDatasetDaily ? 30 : 720 / slice.length; // normalize to monthly scale
+      const elecKwh = Math.round(slice.reduce((sum, r) => sum + r.elecKwh, 0) * (isDatasetDaily ? 1 : factor));
+      const waterM3 = Number((slice.reduce((sum, r) => sum + r.waterM3, 0) * (isDatasetDaily ? 1 : factor)).toFixed(1));
+      const gasMmbtu = Number((slice.reduce((sum, r) => sum + r.gasMmbtu, 0) * (isDatasetDaily ? 1 : factor)).toFixed(1));
+      const prodTons = Number((slice.reduce((sum, r) => sum + r.prodTons, 0) * (isDatasetDaily ? 1 : factor)).toFixed(1));
+
       const secElec = prodTons > 0 ? Number((elecKwh / prodTons).toFixed(2)) : 0;
       const secGas = prodTons > 0 ? Number((gasMmbtu / prodTons).toFixed(3)) : 0;
       const secWater = prodTons > 0 ? Number((waterM3 / prodTons).toFixed(3)) : 0;
 
-      // Energy equivalence (1 MMBTU = 293.07 kWh; 1 kWh = 0.003412 MMBTU)
       const totalEnergyMmbtu = Number((gasMmbtu + elecKwh * 0.003412).toFixed(2));
       const totalEnergyKwhEq = Number((elecKwh + gasMmbtu * 293.07).toFixed(1));
 
-      // Hourly dynamic costs based on simulator tariffs
       const costElec = elecKwh * elecTariff;
       const costGas = gasMmbtu * gasTariff;
       const costWater = waterM3 * waterTariff;
       const totalUtilityCost = Number((costElec + costGas + costWater).toFixed(2));
 
-      // Value add & revenue
       const grossRevenue = Number((prodTons * productPrice).toFixed(2));
       const netValueAdd = Number((grossRevenue - totalUtilityCost).toFixed(2));
       const utilityCostRatioPct = grossRevenue > 0 ? Number(((totalUtilityCost / grossRevenue) * 100).toFixed(2)) : 0;
 
-      return {
-        id: i + 1,
-        timestamp,
+      monthlyRows.push({
+        id: m + 1,
+        timestamp: months[m % 12] + ' (Month ' + (m + 1) + ')',
         elecKwh,
         waterM3,
         gasMmbtu,
@@ -116,9 +273,10 @@ export const EnergyMonitoringView: React.FC<EnergyMonitoringViewProps> = ({
         grossRevenue,
         netValueAdd,
         utilityCostRatioPct,
-      };
-    });
-  }, [dataset, elecTariff, gasTariff, waterTariff, productPrice]);
+      });
+    }
+    return monthlyRows;
+  }, [rawTelemetry, timeResolution, dataset, elecTariff, gasTariff, waterTariff, productPrice]);
 
   // Aggregated Summary Statistics
   const stats = useMemo(() => {
@@ -210,8 +368,42 @@ export const EnergyMonitoringView: React.FC<EnergyMonitoringViewProps> = ({
 
   // Handle CSV Export
   const handleExportCSV = () => {
-    exportToCSV(telemetryData, `Energy_ValueAdd_Telemetry_${dataset.id}`);
+    exportToCSV(telemetryData, `Energy_${timeResolution.toUpperCase()}_ValueAdd_Telemetry_${dataset.id}`);
   };
+
+  // Helper to switch benchmark datasets directly
+  const handleLoadBenchmark = (dsId: string) => {
+    if (!onSelectDataset) return;
+    const target = SAMPLE_DATASETS.find((d) => d.id === dsId);
+    if (target) {
+      onSelectDataset(target);
+    }
+  };
+
+  // Human-readable labels based on time horizon
+  const timeLabels = {
+    hourly: {
+      tag: 'Hourly / Interval Data',
+      xLabel: 'Timestamp (Hour / Interval)',
+      countLabel: `${telemetryData.length} Intervals`,
+      rateUnit: '/hr',
+      secElecTarget: 'Hourly SEC Elec',
+    },
+    daily: {
+      tag: 'Daily Aggregated Data (30-Day)',
+      xLabel: 'Day of Month',
+      countLabel: `${telemetryData.length} Days`,
+      rateUnit: '/day',
+      secElecTarget: 'Daily SEC Elec',
+    },
+    monthly: {
+      tag: 'Monthly ISO 50001 Baseline (12-Month)',
+      xLabel: 'Month',
+      countLabel: `${telemetryData.length} Months`,
+      rateUnit: '/mo',
+      secElecTarget: 'Monthly SEC Elec',
+    },
+  }[timeResolution];
 
   return (
     <div className="space-y-4 font-sans text-slate-800 dark:text-slate-200">
@@ -229,6 +421,9 @@ export const EnergyMonitoringView: React.FC<EnergyMonitoringViewProps> = ({
               <span className="rounded bg-blue-500/20 px-2 py-0.5 text-[10px] font-mono font-bold text-blue-300 border border-blue-400/40">
                 ISO 50001 EnPI
               </span>
+              <span className="rounded bg-emerald-500/20 px-2 py-0.5 text-[10px] font-mono font-bold text-emerald-300 border border-emerald-400/40">
+                {timeLabels.tag}
+              </span>
             </div>
             <p className="text-xs text-blue-200/80 font-mono mt-0.5">
               Electricity (kWh) · Water (m³) · Gas (MMBTU) · Production Output (Tons) · Specific Energy Consumption (SEC)
@@ -242,7 +437,7 @@ export const EnergyMonitoringView: React.FC<EnergyMonitoringViewProps> = ({
             className="flex items-center gap-1.5 rounded border border-blue-700/70 bg-blue-900/60 px-3 py-1.5 text-xs font-mono font-bold text-blue-200 shadow-xs hover:bg-blue-800 hover:text-white transition-colors"
           >
             <Download className="w-3.5 h-3.5" />
-            <span>EXPORT CSV</span>
+            <span>EXPORT {timeResolution.toUpperCase()} CSV</span>
           </button>
           {onNavigateToTab && (
             <button
@@ -254,6 +449,94 @@ export const EnergyMonitoringView: React.FC<EnergyMonitoringViewProps> = ({
             </button>
           )}
         </div>
+      </div>
+
+      {/* 1.5 TIME RESOLUTION OPTION CONTROL BAR (Monthly, Daily, Hourly) */}
+      <div className="flex flex-wrap items-center justify-between gap-2.5 rounded border border-slate-300 bg-white p-2.5 shadow-xs dark:border-slate-800 dark:bg-[#090d16]">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-mono font-bold text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
+            <Calendar className="w-3.5 h-3.5 text-blue-500" />
+            TIME HORIZON & AGGREGATION:
+          </span>
+
+          {/* Segmented Time Option Buttons */}
+          <div className="inline-flex rounded border border-slate-300 bg-slate-100 p-0.5 dark:border-slate-700 dark:bg-slate-900">
+            <button
+              onClick={() => setTimeResolution('hourly')}
+              className={`flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-mono font-bold transition-colors ${
+                timeResolution === 'hourly'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+              }`}
+            >
+              <Clock className="w-3 h-3" />
+              <span>⚡ HOURLY (Interval)</span>
+            </button>
+
+            <button
+              onClick={() => setTimeResolution('daily')}
+              className={`flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-mono font-bold transition-colors ${
+                timeResolution === 'daily'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+              }`}
+            >
+              <CalendarDays className="w-3 h-3" />
+              <span>📅 DAILY DATA</span>
+            </button>
+
+            <button
+              onClick={() => setTimeResolution('monthly')}
+              className={`flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-mono font-bold transition-colors ${
+                timeResolution === 'monthly'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+              }`}
+            >
+              <Calendar className="w-3 h-3" />
+              <span>🗓️ MONTHLY DATA</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Quick Benchmark Preset Switcher */}
+        {onSelectDataset && (
+          <div className="flex items-center gap-1.5 text-xs font-mono">
+            <span className="text-slate-400 text-[10px] uppercase font-bold">Load Benchmark:</span>
+            <button
+              onClick={() => handleLoadBenchmark('ds-energy-multi')}
+              className={`px-2 py-0.5 rounded text-[11px] border font-bold transition-colors ${
+                dataset.id === 'ds-energy-multi'
+                  ? 'border-blue-500 bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                  : 'border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+              }`}
+            >
+              48h Hourly
+            </button>
+
+            <button
+              onClick={() => handleLoadBenchmark('ds-energy-daily')}
+              className={`px-2 py-0.5 rounded text-[11px] border font-bold transition-colors ${
+                dataset.id === 'ds-energy-daily'
+                  ? 'border-blue-500 bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                  : 'border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+              }`}
+            >
+              30-Day Daily
+            </button>
+
+            <button
+              onClick={() => handleLoadBenchmark('ds-energy-monthly')}
+              className={`px-2 py-0.5 rounded text-[11px] border font-bold transition-colors ${
+                dataset.id === 'ds-energy-monthly'
+                  ? 'border-blue-500 bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                  : 'border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+              }`}
+            >
+              12-Month Monthly
+            </button>
+          </div>
+        )}
       </div>
 
       {/* 2. Primary KPI Strip (4 Pillars) */}
@@ -282,7 +565,7 @@ export const EnergyMonitoringView: React.FC<EnergyMonitoringViewProps> = ({
               <div className="text-xs font-mono font-bold text-slate-800 dark:text-slate-200">
                 ${stats.costElecSum.toLocaleString(undefined, { maximumFractionDigits: 0 })}
               </div>
-              <div className="text-[9px] font-mono text-slate-500">Total Elec Cost</div>
+              <div className="text-[9px] font-mono text-slate-500">Elec Total Cost</div>
             </div>
           </div>
         </div>
@@ -311,7 +594,7 @@ export const EnergyMonitoringView: React.FC<EnergyMonitoringViewProps> = ({
               <div className="text-xs font-mono font-bold text-slate-800 dark:text-slate-200">
                 ${stats.costGasSum.toLocaleString(undefined, { maximumFractionDigits: 0 })}
               </div>
-              <div className="text-[9px] font-mono text-slate-500">Total Gas Cost</div>
+              <div className="text-[9px] font-mono text-slate-500">Gas Total Cost</div>
             </div>
           </div>
         </div>
@@ -340,7 +623,7 @@ export const EnergyMonitoringView: React.FC<EnergyMonitoringViewProps> = ({
               <div className="text-xs font-mono font-bold text-slate-800 dark:text-slate-200">
                 ${stats.costWaterSum.toLocaleString(undefined, { maximumFractionDigits: 0 })}
               </div>
-              <div className="text-[9px] font-mono text-slate-500">Total Water Cost</div>
+              <div className="text-[9px] font-mono text-slate-500">Water Total Cost</div>
             </div>
           </div>
         </div>
@@ -451,12 +734,12 @@ export const EnergyMonitoringView: React.FC<EnergyMonitoringViewProps> = ({
                 <div>
                   <h3 className="text-xs font-bold uppercase tracking-wider font-mono text-slate-900 dark:text-white flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                    PRODUCTION VOLUME (TONS) VS ELECTRICITY (kWh) & GAS (MMBTU)
+                    PRODUCTION (TONS) VS ELECTRICITY (kWh) & GAS (MMBTU) — {timeResolution.toUpperCase()}
                   </h3>
-                  <p className="text-[10px] text-slate-500 font-mono mt-0.5">Dual-axis correlation tracking utility surge against plant throughput</p>
+                  <p className="text-[10px] text-slate-500 font-mono mt-0.5">Correlation tracking utility surge against throughput across {timeLabels.xLabel}</p>
                 </div>
                 <div className="text-[10px] font-mono text-slate-500 bg-slate-100 dark:bg-slate-900 px-2 py-1 rounded">
-                  {telemetryData.length} Intervals
+                  {timeLabels.countLabel}
                 </div>
               </div>
 
@@ -464,16 +747,16 @@ export const EnergyMonitoringView: React.FC<EnergyMonitoringViewProps> = ({
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart data={telemetryData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.3} />
-                    <XAxis dataKey="timestamp" tick={{ fontSize: 10, fill: '#64748b' }} interval={Math.floor(telemetryData.length / 8)} />
-                    <YAxis yAxisId="left" tick={{ fontSize: 10, fill: '#3b82f6' }} domain={['auto', 'auto']} label={{ value: 'Electricity (kWh)', angle: -90, position: 'insideLeft', fill: '#3b82f6', fontSize: 10 }} />
-                    <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: '#10b981' }} domain={['auto', 'auto']} label={{ value: 'Production (Tons)', angle: 90, position: 'insideRight', fill: '#10b981', fontSize: 10 }} />
+                    <XAxis dataKey="timestamp" tick={{ fontSize: 10, fill: '#64748b' }} interval={Math.max(0, Math.floor(telemetryData.length / 8))} />
+                    <YAxis yAxisId="left" tick={{ fontSize: 10, fill: '#3b82f6' }} domain={['auto', 'auto']} label={{ value: `Electricity (kWh${timeLabels.rateUnit})`, angle: -90, position: 'insideLeft', fill: '#3b82f6', fontSize: 10 }} />
+                    <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: '#10b981' }} domain={['auto', 'auto']} label={{ value: `Production (Tons${timeLabels.rateUnit})`, angle: 90, position: 'insideRight', fill: '#10b981', fontSize: 10 }} />
                     <Tooltip
                       contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '4px', fontSize: '11px', fontFamily: 'monospace' }}
-                      formatter={(val: any, name: any) => [val, name]}
+                      formatter={(val: any, name: any) => [typeof val === 'number' ? val.toLocaleString() : val, name]}
                     />
                     <Legend wrapperStyle={{ fontSize: '11px', fontFamily: 'monospace', paddingTop: '8px' }} />
                     <Bar yAxisId="right" dataKey="prodTons" name="Production (Tons)" fill="#10b981" opacity={0.35} />
-                    <Line yAxisId="left" type="monotone" dataKey="elecKwh" name="Electricity (kWh)" stroke="#3b82f6" strokeWidth={2} dot={false} />
+                    <Line yAxisId="left" type="monotone" dataKey="elecKwh" name="Electricity (kWh)" stroke="#3b82f6" strokeWidth={2} dot={telemetryData.length <= 15} />
                     <Line yAxisId="left" type="monotone" dataKey="waterM3" name="Water (m³)" stroke="#06b6d4" strokeWidth={1.5} dot={false} />
                   </ComposedChart>
                 </ResponsiveContainer>
@@ -620,9 +903,9 @@ export const EnergyMonitoringView: React.FC<EnergyMonitoringViewProps> = ({
               <div>
                 <h3 className="text-xs font-bold uppercase tracking-wider font-mono text-slate-900 dark:text-white flex items-center gap-2">
                   <Zap className="w-4 h-4 text-blue-500" />
-                  SPECIFIC ELECTRICITY CONSUMPTION (SEC_Elec: kWh / Ton) OVER TIME
+                  SPECIFIC ELECTRICITY CONSUMPTION (SEC_Elec: kWh / Ton) — {timeResolution.toUpperCase()}
                 </h3>
-                <p className="text-[10px] text-slate-500 font-mono mt-0.5">Statistical Process Control (SPC) applied to Energy Performance Indicators</p>
+                <p className="text-[10px] text-slate-500 font-mono mt-0.5">Statistical Process Control (SPC) applied to Energy Performance Indicators across {timeLabels.xLabel}</p>
               </div>
               <div className="flex items-center gap-2 text-xs font-mono">
                 <span className="px-2 py-0.5 bg-blue-500/10 text-blue-700 dark:text-blue-400 font-bold rounded">
@@ -635,7 +918,7 @@ export const EnergyMonitoringView: React.FC<EnergyMonitoringViewProps> = ({
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={telemetryData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.3} />
-                  <XAxis dataKey="timestamp" tick={{ fontSize: 10, fill: '#64748b' }} interval={Math.floor(telemetryData.length / 8)} />
+                  <XAxis dataKey="timestamp" tick={{ fontSize: 10, fill: '#64748b' }} interval={Math.max(0, Math.floor(telemetryData.length / 8))} />
                   <YAxis tick={{ fontSize: 10, fill: '#64748b' }} domain={['auto', 'auto']} />
                   <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '4px', fontSize: '11px', fontFamily: 'monospace' }} />
                   <ReferenceLine y={stats.avgSecElec} stroke="#10b981" strokeDasharray="4 4" label={{ value: `Target: ${stats.avgSecElec.toFixed(2)}`, fill: '#10b981', fontSize: 10, position: 'right' }} />
@@ -656,11 +939,11 @@ export const EnergyMonitoringView: React.FC<EnergyMonitoringViewProps> = ({
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={telemetryData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.3} />
-                    <XAxis dataKey="timestamp" tick={{ fontSize: 9, fill: '#64748b' }} interval={Math.floor(telemetryData.length / 6)} />
+                    <XAxis dataKey="timestamp" tick={{ fontSize: 9, fill: '#64748b' }} interval={Math.max(0, Math.floor(telemetryData.length / 6))} />
                     <YAxis tick={{ fontSize: 9, fill: '#64748b' }} domain={['auto', 'auto']} />
                     <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '4px', fontSize: '11px', fontFamily: 'monospace' }} />
                     <ReferenceLine y={stats.avgSecGas} stroke="#f59e0b" strokeDasharray="4 4" />
-                    <Line type="monotone" dataKey="secGas" name="SEC Gas (MMBTU/Ton)" stroke="#f59e0b" strokeWidth={2} dot={false} />
+                    <Line type="monotone" dataKey="secGas" name="SEC Gas (MMBTU/Ton)" stroke="#f59e0b" strokeWidth={2} dot={telemetryData.length <= 15} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -675,11 +958,11 @@ export const EnergyMonitoringView: React.FC<EnergyMonitoringViewProps> = ({
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={telemetryData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.3} />
-                    <XAxis dataKey="timestamp" tick={{ fontSize: 9, fill: '#64748b' }} interval={Math.floor(telemetryData.length / 6)} />
+                    <XAxis dataKey="timestamp" tick={{ fontSize: 9, fill: '#64748b' }} interval={Math.max(0, Math.floor(telemetryData.length / 6))} />
                     <YAxis tick={{ fontSize: 9, fill: '#64748b' }} domain={['auto', 'auto']} />
                     <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '4px', fontSize: '11px', fontFamily: 'monospace' }} />
                     <ReferenceLine y={stats.avgSecWater} stroke="#06b6d4" strokeDasharray="4 4" />
-                    <Line type="monotone" dataKey="secWater" name="SEC Water (m³/Ton)" stroke="#06b6d4" strokeWidth={2} dot={false} />
+                    <Line type="monotone" dataKey="secWater" name="SEC Water (m³/Ton)" stroke="#06b6d4" strokeWidth={2} dot={telemetryData.length <= 15} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -698,10 +981,10 @@ export const EnergyMonitoringView: React.FC<EnergyMonitoringViewProps> = ({
                 <div>
                   <h3 className="text-xs font-bold uppercase tracking-wider font-mono text-slate-900 dark:text-white flex items-center gap-2">
                     <TrendingUp className="w-4 h-4 text-emerald-500" />
-                    ENERGY BASELINE (EnB) REGRESSION MODEL
+                    ENERGY BASELINE (EnB) REGRESSION MODEL — {timeResolution.toUpperCase()}
                   </h3>
                   <p className="text-[10px] text-slate-500 font-mono mt-0.5">
-                    Total Energy (MMBTU Eq.) vs. Production Volume (Tons)
+                    Total Energy (MMBTU Eq.) vs. Production Volume (Tons) [{timeLabels.countLabel}]
                   </p>
                 </div>
                 <span className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded">
@@ -713,10 +996,10 @@ export const EnergyMonitoringView: React.FC<EnergyMonitoringViewProps> = ({
                 <ResponsiveContainer width="100%" height="100%">
                   <ScatterChart margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.3} />
-                    <XAxis type="number" dataKey="prodTons" name="Production" unit=" Tons" tick={{ fontSize: 10, fill: '#64748b' }} domain={['auto', 'auto']} label={{ value: 'Production Volume (Tons)', position: 'insideBottom', offset: -5, fill: '#64748b', fontSize: 10 }} />
-                    <YAxis type="number" dataKey="totalEnergyMmbtu" name="Energy" unit=" MMBTU" tick={{ fontSize: 10, fill: '#64748b' }} domain={['auto', 'auto']} label={{ value: 'Total Energy (MMBTU Eq.)', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 10 }} />
+                    <XAxis type="number" dataKey="prodTons" name="Production" unit=" Tons" tick={{ fontSize: 10, fill: '#64748b' }} domain={['auto', 'auto']} label={{ value: `Production Volume (Tons${timeLabels.rateUnit})`, position: 'insideBottom', offset: -5, fill: '#64748b', fontSize: 10 }} />
+                    <YAxis type="number" dataKey="totalEnergyMmbtu" name="Energy" unit=" MMBTU" tick={{ fontSize: 10, fill: '#64748b' }} domain={['auto', 'auto']} label={{ value: `Total Energy (MMBTU Eq.${timeLabels.rateUnit})`, angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 10 }} />
                     <Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '4px', fontSize: '11px', fontFamily: 'monospace' }} />
-                    <Scatter name="Hourly Telemetry" data={telemetryData} fill="#3b82f6" opacity={0.8} />
+                    <Scatter name={`${timeResolution.toUpperCase()} Observations`} data={telemetryData} fill="#3b82f6" opacity={0.8} />
                   </ScatterChart>
                 </ResponsiveContainer>
               </div>
@@ -730,17 +1013,17 @@ export const EnergyMonitoringView: React.FC<EnergyMonitoringViewProps> = ({
                 </h3>
 
                 <div className="p-3 bg-slate-100 dark:bg-slate-900 rounded border border-slate-200 dark:border-slate-800 font-mono text-center">
-                  <div className="text-[10px] text-slate-500 uppercase font-bold">Energy Baseline Model</div>
+                  <div className="text-[10px] text-slate-500 uppercase font-bold">{timeResolution.toUpperCase()} Baseline Model</div>
                   <div className="text-sm font-bold text-blue-600 dark:text-blue-400 mt-1">
                     E = {stats.regSlope.toFixed(4)} × P + {stats.regIntercept.toFixed(2)}
                   </div>
-                  <div className="text-[9px] text-slate-400 mt-0.5">[Total Energy MMBTU = Variable × Tons + Baseload]</div>
+                  <div className="text-[9px] text-slate-400 mt-0.5">[Energy MMBTU{timeLabels.rateUnit} = Rate × Tons{timeLabels.rateUnit} + Baseload]</div>
                 </div>
 
                 <div className="mt-4 space-y-2 text-xs font-mono">
                   <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800">
                     <span className="text-slate-500">Fixed Baseload Energy:</span>
-                    <span className="font-bold text-rose-500">{stats.regIntercept.toFixed(2)} MMBTU/h</span>
+                    <span className="font-bold text-rose-500">{stats.regIntercept.toFixed(2)} MMBTU{timeLabels.rateUnit}</span>
                   </div>
                   <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800">
                     <span className="text-slate-500">Variable Energy Rate:</span>
@@ -756,10 +1039,12 @@ export const EnergyMonitoringView: React.FC<EnergyMonitoringViewProps> = ({
               <div className="mt-4 p-2.5 rounded bg-blue-500/10 border border-blue-400/30 text-[11px] font-mono text-blue-800 dark:text-blue-300">
                 <div className="font-bold flex items-center gap-1">
                   <Info className="w-3.5 h-3.5" />
-                  <span>EnPI Insight</span>
+                  <span>ISO 50001 Baseline Note</span>
                 </div>
                 <p className="text-[10px] text-blue-700 dark:text-blue-300 mt-1">
-                  The fixed baseload represents idle plant energy loss (lighting, transformers, idling boilers). Reducing the intercept from {stats.regIntercept.toFixed(1)} saves fixed operating expenditure regardless of production rate.
+                  {timeResolution === 'monthly'
+                    ? 'The 12-month annual baseline accounts for seasonal thermal shifts and weather degree days. Use this EnB equation to benchmark against current operational months.'
+                    : 'The fixed baseload represents idle facility energy consumption (standby transformers, pumps, lighting). Lowering the intercept directly boosts gross value-add.'}
                 </p>
               </div>
             </div>
@@ -864,7 +1149,7 @@ export const EnergyMonitoringView: React.FC<EnergyMonitoringViewProps> = ({
             <div className="lg:col-span-2 rounded border border-slate-300 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-[#090d16] flex flex-col justify-between">
               <div>
                 <h3 className="text-xs font-bold uppercase tracking-wider font-mono text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-800 pb-2 mb-3">
-                  DYNAMIC FINANCIAL IMPACT & VALUE-ADD MODEL
+                  DYNAMIC FINANCIAL IMPACT & VALUE-ADD MODEL ({timeResolution.toUpperCase()})
                 </h3>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -931,13 +1216,13 @@ export const EnergyMonitoringView: React.FC<EnergyMonitoringViewProps> = ({
         <div className="rounded border border-slate-300 bg-white shadow-xs dark:border-slate-800 dark:bg-[#090d16] overflow-hidden">
           <div className="p-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
             <h3 className="text-xs font-bold uppercase tracking-wider font-mono text-slate-900 dark:text-white">
-              INTERVAL TELEMETRY LOGS ({telemetryData.length} ROWS)
+              {timeResolution.toUpperCase()} TELEMETRY LOGS ({telemetryData.length} ROWS)
             </h3>
             <button
               onClick={handleExportCSV}
               className="flex items-center gap-1 text-xs font-mono font-bold text-blue-600 dark:text-blue-400 hover:underline"
             >
-              <Download className="w-3.5 h-3.5" /> Download Full CSV
+              <Download className="w-3.5 h-3.5" /> Download {timeResolution.toUpperCase()} CSV
             </button>
           </div>
 
@@ -946,7 +1231,7 @@ export const EnergyMonitoringView: React.FC<EnergyMonitoringViewProps> = ({
               <thead className="bg-slate-100 dark:bg-slate-900/80 sticky top-0 text-[10px] uppercase text-slate-500 border-b border-slate-200 dark:border-slate-800">
                 <tr>
                   <th className="py-2 px-3">#</th>
-                  <th className="py-2 px-3">Interval / Time</th>
+                  <th className="py-2 px-3">{timeLabels.xLabel}</th>
                   <th className="py-2 px-3 text-right text-blue-600 dark:text-blue-400">Electricity (kWh)</th>
                   <th className="py-2 px-3 text-right text-amber-600 dark:text-amber-400">Gas (MMBTU)</th>
                   <th className="py-2 px-3 text-right text-cyan-600 dark:text-cyan-400">Water (m³)</th>
@@ -961,12 +1246,12 @@ export const EnergyMonitoringView: React.FC<EnergyMonitoringViewProps> = ({
                   <tr key={row.id} className="hover:bg-slate-50 dark:hover:bg-slate-900/50">
                     <td className="py-1.5 px-3 text-slate-400">{row.id}</td>
                     <td className="py-1.5 px-3 font-bold text-slate-800 dark:text-slate-200">{row.timestamp}</td>
-                    <td className="py-1.5 px-3 text-right text-blue-600 dark:text-blue-400 font-bold">{row.elecKwh.toFixed(1)}</td>
-                    <td className="py-1.5 px-3 text-right text-amber-600 dark:text-amber-400 font-bold">{row.gasMmbtu.toFixed(2)}</td>
-                    <td className="py-1.5 px-3 text-right text-cyan-600 dark:text-cyan-400 font-bold">{row.waterM3.toFixed(1)}</td>
-                    <td className="py-1.5 px-3 text-right text-emerald-600 dark:text-emerald-400 font-bold">{row.prodTons.toFixed(1)}</td>
+                    <td className="py-1.5 px-3 text-right text-blue-600 dark:text-blue-400 font-bold">{row.elecKwh.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                    <td className="py-1.5 px-3 text-right text-amber-600 dark:text-amber-400 font-bold">{row.gasMmbtu.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                    <td className="py-1.5 px-3 text-right text-cyan-600 dark:text-cyan-400 font-bold">{row.waterM3.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                    <td className="py-1.5 px-3 text-right text-emerald-600 dark:text-emerald-400 font-bold">{row.prodTons.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
                     <td className="py-1.5 px-3 text-right text-slate-700 dark:text-slate-300">{row.secElec.toFixed(2)}</td>
-                    <td className="py-1.5 px-3 text-right text-slate-900 dark:text-white font-bold">${row.totalUtilityCost.toFixed(2)}</td>
+                    <td className="py-1.5 px-3 text-right text-slate-900 dark:text-white font-bold">${row.totalUtilityCost.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                     <td className="py-1.5 px-3 text-right text-emerald-700 dark:text-emerald-400 font-bold">${row.netValueAdd.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
                   </tr>
                 ))}
