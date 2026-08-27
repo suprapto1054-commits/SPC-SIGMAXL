@@ -9,6 +9,7 @@ import {
   Printer,
   ChevronDown,
   Activity,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { printExecutiveReport } from '../../utils/exportUtils';
 
@@ -93,9 +94,10 @@ export const Header: React.FC<HeaderProps> = ({
         <button
           onClick={onOpenImportModal}
           className="flex items-center gap-1.5 rounded border border-blue-700/70 bg-blue-900/50 px-2.5 py-1 text-[11px] font-mono font-bold text-blue-200 shadow-xs hover:bg-blue-800 hover:text-white transition-colors"
+          title="Download benchmark templates or import custom datasets"
         >
-          <Upload className="w-3 h-3 text-blue-300" />
-          <span>LOAD DATA</span>
+          <FileSpreadsheet className="w-3.5 h-3.5 text-blue-300" />
+          <span>DATA & TEMPLATES</span>
         </button>
 
         <button
