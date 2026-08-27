@@ -1,0 +1,6 @@
+{
+  "name": "AI-SPC Analytics",
+  "description": "Professional Statistical Process Control (SPC) and Statistical Analysis application with automated sigma zones, Western Electric / Nelson test rules, capability analysis, and Gemini AI insights.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
