@@ -2,6 +2,18 @@ import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import { Dataset } from '../types/spc';
 
+export function exportToCSV(data: any[], filename = 'export_telemetry') {
+  const csv = Papa.unparse(data);
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  link.setAttribute('download', `${filename}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
 export function exportDatasetToCSV(dataset: Dataset, filename?: string) {
   const rows: Record<string, any>[] = [];
   for (let i = 0; i < dataset.rowCount; i++) {

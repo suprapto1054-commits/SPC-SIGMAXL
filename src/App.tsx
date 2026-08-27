@@ -11,6 +11,7 @@ import { Sidebar } from './components/layout/Sidebar';
 
 // Views
 import { DashboardOverview } from './components/dashboard/DashboardOverview';
+import { EnergyMonitoringView } from './components/energy/EnergyMonitoringView';
 import { ControlChartView } from './components/spc/ControlChartView';
 import { TestRuleTable } from './components/spc/TestRuleTable';
 import { CapabilityView } from './components/capability/CapabilityView';
@@ -100,8 +101,22 @@ export function App() {
   };
 
   const handleImportNewDataset = (newDataset: Dataset) => {
-    setDatasets((prev) => [newDataset, ...prev]);
-    setActiveDatasetId(newDataset.id);
+    // Check if the dataset is already present in the list
+    const existing = datasets.find((d) => d.id === newDataset.id);
+    if (existing) {
+      setActiveDatasetId(newDataset.id);
+      setSelectedColumnName('');
+      return;
+    }
+
+    // Ensure unique ID if imported with a generic name
+    const uniqueId = datasets.some((d) => d.id === newDataset.id)
+      ? `${newDataset.id}-${Date.now()}`
+      : newDataset.id;
+
+    const datasetToAdd = { ...newDataset, id: uniqueId };
+    setDatasets((prev) => [datasetToAdd, ...prev]);
+    setActiveDatasetId(datasetToAdd.id);
     setSelectedColumnName('');
   };
 
@@ -176,6 +191,14 @@ export function App() {
               dataset={currentDataset}
               spcResult={spcResult}
               capability={capabilityResult}
+              onNavigateToTab={setActiveTab}
+            />
+          )}
+
+          {/* TAB 1.5: ENERGY & VALUE-ADD MONITORING */}
+          {activeTab === 'energy-monitoring' && (
+            <EnergyMonitoringView
+              dataset={currentDataset}
               onNavigateToTab={setActiveTab}
             />
           )}
