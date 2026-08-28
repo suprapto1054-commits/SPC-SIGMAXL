@@ -325,25 +325,18 @@ export const CapabilityView: React.FC<CapabilityViewProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-6 text-xs font-mono">
+        <div className="flex items-center gap-4 text-xs font-mono">
           <div>
-            <span className="text-[10px] uppercase text-slate-500 dark:text-slate-400">EXPECTED DPM:</span>
-            <p className="font-bold text-rose-600 dark:text-rose-400">
+            <span className="text-[10px] uppercase text-slate-500 dark:text-slate-400">DEFECT RATE:</span>
+            <p className="font-bold text-slate-900 dark:text-slate-100">
               {typeof capability.expectedPpmTotal === 'number' && !isNaN(capability.expectedPpmTotal)
                 ? Math.round(capability.expectedPpmTotal).toLocaleString()
-                : '0'}
+                : '0'}{' '}
+              PPM
             </p>
           </div>
           <div>
-            <span className="text-[10px] uppercase text-slate-500 dark:text-slate-400">OBSERVED DPM:</span>
-            <p className="font-bold text-amber-600 dark:text-amber-400">
-              {typeof capability.observedPpm === 'number' && !isNaN(capability.observedPpm)
-                ? Math.round(capability.observedPpm).toLocaleString()
-                : '0'}
-            </p>
-          </div>
-          <div>
-            <span className="text-[10px] uppercase text-slate-500 dark:text-slate-400">Z-BENCHMARK:</span>
+            <span className="text-[10px] uppercase text-slate-500 dark:text-slate-400">BENCHMARK:</span>
             <p className="font-bold text-sky-600 dark:text-sky-400">
               {typeof capability.zBenchmark === 'number' && !isNaN(capability.zBenchmark)
                 ? capability.zBenchmark.toFixed(2)

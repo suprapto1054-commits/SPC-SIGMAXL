@@ -92,7 +92,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         />
         <MetricCard
           title="EXPECTED DEFECT RATE"
-          value={capability?.expectedPpmTotal !== undefined ? `${capability.expectedPpmTotal.toFixed(0)} DPM` : '—'}
+          value={capability?.expectedPpmTotal !== undefined ? `${capability.expectedPpmTotal.toFixed(0)} PPM` : '—'}
           subtitle={`Z-BENCH: ${capability?.zBenchmark !== undefined ? capability.zBenchmark.toFixed(2) : '—'}σ`}
           badgeType="info"
           onClick={() => onNavigateToTab('capability')}
