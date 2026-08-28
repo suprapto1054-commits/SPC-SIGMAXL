@@ -2,6 +2,124 @@ import { Dataset } from '../types/spc';
 
 export const SAMPLE_DATASETS: Dataset[] = [
   {
+    id: 'ds-gas-emissions-capability',
+    name: '🌿 Continuous Gas Emissions Capability (CO2 & NH3 Long-Term vs Short-Term)',
+    description: 'Continuous stack gas emission monitoring and capability study comparing long-term continuous CEMS analyzer telemetry against short-term reference audit samples for CO2 and Ammonia (NH3) slip.',
+    rowCount: 36,
+    createdAt: '2026-08-28',
+    metadata: {
+      equipment: 'Continuous Emission Monitoring System (CEMS) & Stack FTIR Analyzer',
+      line: 'Boiler / DeNOx SCR Exhaust Stack #2',
+      process: 'Environmental Stack Flue Gas Capability & Compliance Audit',
+      shift: 'Continuous Multi-Day Surveillance (Hourly Shifts)',
+      operator: 'Environmental Quality & Process Engineering Bureau',
+      materialLot: 'STACK-GAS-EMISSION-36H',
+      product: 'CO2 Greenhouse & NH3 Slip Capability Benchmark',
+    },
+    columns: [
+      {
+        id: 'col_month',
+        name: 'Month',
+        type: 'categorical',
+        values: [
+          'Jan', 'Jan', 'Jan', 'Jan', 'Jan', 'Jan', 'Jan', 'Jan', 'Jan', 'Jan', 'Jan', 'Jan',
+          'Feb', 'Feb', 'Feb', 'Feb', 'Feb', 'Feb', 'Feb', 'Feb', 'Feb', 'Feb', 'Feb', 'Feb',
+          'Mar', 'Mar', 'Mar', 'Mar', 'Mar', 'Mar', 'Mar', 'Mar', 'Mar', 'Mar', 'Mar', 'Mar',
+        ],
+      },
+      {
+        id: 'col_day',
+        name: 'Day',
+        type: 'numeric',
+        values: [
+          1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3,
+          1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3,
+          1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3,
+        ],
+      },
+      {
+        id: 'col_hour',
+        name: 'Hour',
+        type: 'numeric',
+        values: [
+          1, 7, 13, 19, 1, 7, 13, 19, 1, 7, 13, 19,
+          1, 7, 13, 19, 1, 7, 13, 19, 1, 7, 13, 19,
+          1, 7, 13, 19, 1, 7, 13, 19, 1, 7, 13, 19,
+        ],
+      },
+      {
+        id: 'col_co2_long',
+        name: 'CO2-Long',
+        type: 'numeric',
+        values: [
+          14.85, 15.12, 15.34, 14.98, 15.22, 15.45, 15.08, 14.92, 15.30, 15.55, 15.18, 14.88,
+          15.25, 15.42, 15.68, 15.15, 15.38, 15.52, 15.20, 15.05, 15.40, 15.62, 15.28, 14.95,
+          15.10, 15.35, 15.58, 15.02, 15.28, 15.48, 15.12, 14.90, 15.32, 15.50, 15.22, 14.82,
+        ],
+      },
+      {
+        id: 'col_nh3_long',
+        name: 'NH3-Long',
+        type: 'numeric',
+        values: [
+          8.45, 9.12, 9.85, 8.78, 9.32, 10.15, 8.95, 8.62, 9.48, 10.35, 9.20, 8.55,
+          9.10, 9.65, 10.42, 9.05, 9.58, 10.22, 9.15, 8.80, 9.72, 10.50, 9.35, 8.70,
+          8.90, 9.45, 10.18, 8.82, 9.38, 10.08, 9.02, 8.65, 9.55, 10.25, 9.18, 8.50,
+        ],
+      },
+      {
+        id: 'col_month2',
+        name: 'Month2',
+        type: 'categorical',
+        values: [
+          'Jan', 'Jan', 'Jan', 'Jan', 'Jan', 'Jan', 'Jan', 'Jan', 'Jan', 'Jan', 'Jan', 'Jan',
+          'Feb', 'Feb', 'Feb', 'Feb', 'Feb', 'Feb', 'Feb', 'Feb', 'Feb', 'Feb', 'Feb', 'Feb',
+          'Mar', 'Mar', 'Mar', 'Mar', 'Mar', 'Mar', 'Mar', 'Mar', 'Mar', 'Mar', 'Mar', 'Mar',
+        ],
+      },
+      {
+        id: 'col_day2',
+        name: 'Day2',
+        type: 'numeric',
+        values: [
+          1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3,
+          1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3,
+          1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3,
+        ],
+      },
+      {
+        id: 'col_hour2',
+        name: 'Hour2',
+        type: 'numeric',
+        values: [
+          1, 7, 13, 19, 1, 7, 13, 19, 1, 7, 13, 19,
+          1, 7, 13, 19, 1, 7, 13, 19, 1, 7, 13, 19,
+          1, 7, 13, 19, 1, 7, 13, 19, 1, 7, 13, 19,
+        ],
+      },
+      {
+        id: 'col_co2_shrt',
+        name: 'CO2-Shrt',
+        type: 'numeric',
+        values: [
+          14.90, 15.08, 15.28, 15.02, 15.18, 15.40, 15.12, 14.96, 15.25, 15.50, 15.14, 14.92,
+          15.20, 15.38, 15.62, 15.10, 15.32, 15.48, 15.16, 15.00, 15.35, 15.56, 15.24, 14.90,
+          15.05, 15.30, 15.52, 14.98, 15.22, 15.42, 15.08, 14.86, 15.28, 15.45, 15.18, 14.85,
+        ],
+      },
+      {
+        id: 'col_nh3_shrt',
+        name: 'NH3-Shrt',
+        type: 'numeric',
+        values: [
+          8.50, 9.08, 9.80, 8.82, 9.28, 10.10, 8.90, 8.68, 9.42, 10.28, 9.15, 8.60,
+          9.05, 9.60, 10.35, 9.00, 9.52, 10.15, 9.10, 8.75, 9.68, 10.45, 9.30, 8.65,
+          8.85, 9.40, 10.12, 8.78, 9.32, 10.02, 8.98, 8.70, 9.50, 10.20, 9.12, 8.55,
+        ],
+      },
+    ],
+  },
+  {
     id: 'ds-energy-multi',
     name: '⚡ Multi-Utility & Production Value-Add Benchmark (kWh, m³, MMBTU, Tons)',
     description: 'ISO 50001 compliant 48-hour continuous utility telemetry capturing electrical energy (kWh), industrial water (m³), natural gas (MMBTU), and finished goods production volume (Tons) for specific energy consumption (SEC) and value-add intensity analysis.',

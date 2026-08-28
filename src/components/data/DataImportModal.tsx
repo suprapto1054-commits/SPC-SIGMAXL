@@ -628,9 +628,41 @@ export const DataImportModal: React.FC<DataImportModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase text-slate-700 dark:text-slate-300 mb-1">
-                  Paste CSV / Tab-Separated Data (Including Header Row):
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold uppercase text-slate-700 dark:text-slate-300">
+                    Paste CSV / Tab-Separated Data (Including Header Row):
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDatasetName('Stack Gas Emissions Capability Study (CO2 & NH3)');
+                        setPastedText(
+`Month\tDay\tHour\tCO2-Long\tNH3-Long\tMonth2\tDay2\tHour2\tCO2-Shrt\tNH3-Shrt
+Jan\t1\t1\t14.85\t8.45\tJan\t1\t1\t14.90\t8.50
+Jan\t1\t7\t15.12\t9.12\tJan\t1\t7\t15.08\t9.08
+Jan\t1\t13\t15.34\t9.85\tJan\t1\t13\t15.28\t9.80
+Jan\t1\t19\t14.98\t8.78\tJan\t1\t19\t15.02\t8.82
+Jan\t2\t1\t15.22\t9.32\tJan\t2\t1\t15.18\t9.28
+Jan\t2\t7\t15.45\t10.15\tJan\t2\t7\t15.40\t10.10
+Jan\t2\t13\t15.08\t8.95\tJan\t2\t13\t15.12\t8.90
+Jan\t2\t19\t14.92\t8.62\tJan\t2\t19\t14.96\t8.68
+Feb\t1\t1\t15.25\t9.10\tFeb\t1\t1\t15.20\t9.05
+Feb\t1\t7\t15.42\t9.65\tFeb\t1\t7\t15.38\t9.60
+Feb\t1\t13\t15.68\t10.42\tFeb\t1\t13\t15.62\t10.35
+Feb\t1\t19\t15.15\t9.05\tFeb\t1\t19\t15.10\t9.00
+Mar\t1\t1\t15.10\t8.90\tMar\t1\t1\t15.05\t8.85
+Mar\t1\t7\t15.35\t9.45\tMar\t1\t7\t15.30\t9.40
+Mar\t1\t13\t15.58\t10.18\tMar\t1\t13\t15.52\t10.12
+Mar\t1\t19\t15.02\t8.82\tMar\t1\t19\t14.98\t8.78`
+                        );
+                      }}
+                      className="text-[10px] text-sky-600 dark:text-sky-400 hover:underline font-mono font-bold"
+                    >
+                      + Insert Gas Emission Template (CO2 & NH3)
+                    </button>
+                  </div>
+                </div>
                 <textarea
                   rows={8}
                   value={pastedText}
