@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { CapabilityResult } from '../../types/statistics';
 import { SpecificationLimits, Dataset } from '../../types/spc';
 import { calculateProcessCapability } from '../../engine/capabilityEngine';
+import { standardNormalInv } from '../../engine/statisticalEngine';
 import { MetricCard } from '../common/MetricCard';
-import { Gauge, Sliders, AlertTriangle, CheckCircle, Info, RefreshCw, Zap } from 'lucide-react';
+import { Gauge, Sliders, AlertTriangle, CheckCircle, Info, RefreshCw, Zap, Activity, Binary, Calculator } from 'lucide-react';
 
 interface CapabilityViewProps {
   dataset: Dataset;
@@ -18,12 +19,14 @@ export const CapabilityView: React.FC<CapabilityViewProps> = ({
   initialSpecLimits,
   onUpdateSpecLimits,
 }) => {
+  const [mode, setMode] = useState<'continuous' | 'discrete'>('continuous');
+
   const col = dataset.columns.find((c) => c.name === columnName);
   const values = (col?.values || []).filter(
     (v) => typeof v === 'number' && !isNaN(v) && isFinite(v)
   ) as number[];
 
-  // Statistics for default auto-suggestions
+  // --- CONTINUOUS CAPABILITY STATE ---
   const mean = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
   const variance =
     values.length > 1
@@ -31,10 +34,15 @@ export const CapabilityView: React.FC<CapabilityViewProps> = ({
       : 1;
   const std = Math.sqrt(variance);
 
-  // Local input states for USL, LSL, Target
   const [usl, setUsl] = useState<string>('');
   const [lsl, setLsl] = useState<string>('');
   const [target, setTarget] = useState<string>('');
+
+  // --- DISCRETE CAPABILITY STATE ---
+  const initialDefectCount = values.reduce((sum, v) => sum + (v > 0 ? v : 0), 0);
+  const [inspectedUnits, setInspectedUnits] = useState<string>(String(values.length || 1));
+  const [opportunitiesPerUnit, setOpportunitiesPerUnit] = useState<string>('1');
+  const [totalDefects, setTotalDefects] = useState<string>(String(initialDefectCount));
 
   // Sync state when dataset, column, or initialSpecLimits change
   useEffect(() => {
@@ -55,7 +63,13 @@ export const CapabilityView: React.FC<CapabilityViewProps> = ({
     } else {
       setTarget(mean.toFixed(2));
     }
-  }, [dataset.id, columnName, initialSpecLimits?.usl, initialSpecLimits?.lsl, initialSpecLimits?.target, mean, std]);
+    
+    // Reset discrete baseline when column changes
+    setInspectedUnits(String(values.length || 1));
+    setOpportunitiesPerUnit('1');
+    setTotalDefects(String(values.reduce((sum, v) => sum + (v > 0 ? v : 0), 0)));
+    
+  }, [dataset.id, columnName, initialSpecLimits?.usl, initialSpecLimits?.lsl, initialSpecLimits?.target, mean, std, values.length]);
 
   const numUsl = parseFloat(usl);
   const numLsl = parseFloat(lsl);
@@ -76,6 +90,30 @@ export const CapabilityView: React.FC<CapabilityViewProps> = ({
 
   // Safe capability calculation
   const capability: CapabilityResult = calculateProcessCapability(values, specLimits);
+
+  // --- CONTINUOUS SIGMA LEVEL ---
+  let continuousYield = 0;
+  let continuousSigmaLevel = 0;
+  if (typeof capability.expectedPpmTotal === 'number' && !isNaN(capability.expectedPpmTotal)) {
+     continuousYield = 1 - (capability.expectedPpmTotal / 1_000_000);
+     continuousSigmaLevel = standardNormalInv(Math.max(0.0000001, Math.min(0.9999999, continuousYield))) + 1.5;
+  }
+
+  // --- DISCRETE SIGMA LEVEL ---
+  const numInspected = parseFloat(inspectedUnits) || 0;
+  const numOpp = parseFloat(opportunitiesPerUnit) || 0;
+  const numDefects = parseFloat(totalDefects) || 0;
+  
+  const totalOpportunities = numInspected * numOpp;
+  let discreteDpmo = 0;
+  let discreteYield = 0;
+  let discreteSigmaLevel = 0;
+  
+  if (totalOpportunities > 0) {
+    discreteDpmo = (numDefects / totalOpportunities) * 1_000_000;
+    discreteYield = Math.max(0, 1 - (discreteDpmo / 1_000_000));
+    discreteSigmaLevel = standardNormalInv(Math.max(0.0000001, Math.min(0.9999999, discreteYield))) + 1.5;
+  }
 
   const handleApplySpecs = () => {
     onUpdateSpecLimits?.(specLimits);
@@ -185,18 +223,46 @@ export const CapabilityView: React.FC<CapabilityViewProps> = ({
 
   return (
     <div className="space-y-4">
-      {/* Spec Limit Configuration Toolbar */}
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-[#020617]">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3 dark:border-slate-800">
-          <div className="flex items-center gap-2">
-            <Sliders className="h-4 w-4 text-sky-500" />
-            <h3 className="text-xs font-bold uppercase tracking-widest text-slate-800 dark:text-white font-mono">
-              PROCESS CAPABILITY & SPECIFICATION LIMITS SETUP
-            </h3>
-            <span className="text-[11px] font-mono text-slate-500">
-              ({columnName} • {values.length} obs)
-            </span>
-          </div>
+      {/* View Mode Selector */}
+      <div className="flex gap-2 p-1 bg-slate-100 dark:bg-slate-900 rounded-lg w-fit">
+        <button
+          onClick={() => setMode('continuous')}
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
+            mode === 'continuous'
+              ? 'bg-white dark:bg-slate-800 text-sky-600 dark:text-sky-400 shadow-xs'
+              : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+          }`}
+        >
+          <Activity className="w-4 h-4" />
+          CONTINUOUS VARIABLES
+        </button>
+        <button
+          onClick={() => setMode('discrete')}
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
+            mode === 'discrete'
+              ? 'bg-white dark:bg-slate-800 text-purple-600 dark:text-purple-400 shadow-xs'
+              : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+          }`}
+        >
+          <Binary className="w-4 h-4" />
+          DISCRETE ATTRIBUTES
+        </button>
+      </div>
+
+      {mode === 'continuous' && (
+        <>
+          {/* Spec Limit Configuration Toolbar */}
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-[#020617]">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <Sliders className="h-4 w-4 text-sky-500" />
+                <h3 className="text-xs font-bold uppercase tracking-widest text-slate-800 dark:text-white font-mono">
+                  PROCESS CAPABILITY & SPECIFICATION LIMITS SETUP
+                </h3>
+                <span className="text-[11px] font-mono text-slate-500">
+                  ({columnName} • {values.length} obs)
+                </span>
+              </div>
 
           {/* Quick Presets */}
           <div className="flex items-center gap-1.5 text-xs font-mono">
@@ -325,21 +391,37 @@ export const CapabilityView: React.FC<CapabilityViewProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-4 text-xs font-mono">
+        <div className="flex items-center gap-6 text-xs font-mono">
           <div>
-            <span className="text-[10px] uppercase text-slate-500 dark:text-slate-400">DEFECT RATE:</span>
-            <p className="font-bold text-slate-900 dark:text-slate-100">
+            <span className="text-[10px] uppercase text-slate-500 dark:text-slate-400">EXPECTED DPM:</span>
+            <p className="font-bold text-rose-600 dark:text-rose-400">
               {typeof capability.expectedPpmTotal === 'number' && !isNaN(capability.expectedPpmTotal)
                 ? Math.round(capability.expectedPpmTotal).toLocaleString()
-                : '0'}{' '}
-              PPM
+                : '0'}
             </p>
           </div>
           <div>
-            <span className="text-[10px] uppercase text-slate-500 dark:text-slate-400">BENCHMARK:</span>
+            <span className="text-[10px] uppercase text-slate-500 dark:text-slate-400">OBSERVED DPM:</span>
+            <p className="font-bold text-amber-600 dark:text-amber-400">
+              {typeof capability.observedPpm === 'number' && !isNaN(capability.observedPpm)
+                ? Math.round(capability.observedPpm).toLocaleString()
+                : '0'}
+            </p>
+          </div>
+          <div>
+            <span className="text-[10px] uppercase text-slate-500 dark:text-slate-400">Z-BENCHMARK:</span>
             <p className="font-bold text-sky-600 dark:text-sky-400">
               {typeof capability.zBenchmark === 'number' && !isNaN(capability.zBenchmark)
                 ? capability.zBenchmark.toFixed(2)
+                : '—'}
+              σ
+            </p>
+          </div>
+          <div>
+            <span className="text-[10px] uppercase text-slate-500 dark:text-slate-400">PROCESS SIGMA:</span>
+            <p className="font-bold text-purple-600 dark:text-purple-400">
+              {continuousSigmaLevel > 0
+                ? continuousSigmaLevel.toFixed(2)
                 : '—'}
               σ
             </p>
@@ -542,6 +624,120 @@ export const CapabilityView: React.FC<CapabilityViewProps> = ({
           </svg>
         </div>
       </div>
+      </>
+      )}
+
+      {mode === 'discrete' && (
+        <>
+          {/* Discrete Capability Config */}
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-[#020617]">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <Calculator className="h-4 w-4 text-purple-500" />
+                <h3 className="text-xs font-bold uppercase tracking-widest text-slate-800 dark:text-white font-mono">
+                  DISCRETE PROCESS METRICS SETUP
+                </h3>
+              </div>
+            </div>
+            
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs font-mono">
+              <div>
+                <label className="block text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">
+                  TOTAL UNITS INSPECTED
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={inspectedUnits}
+                  onChange={(e) => setInspectedUnits(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-900 focus:border-purple-500 focus:outline-hidden dark:border-slate-800 dark:bg-slate-900/90 dark:text-white"
+                  placeholder="e.g. 1000"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">
+                  OPPORTUNITIES PER UNIT (OPP)
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={opportunitiesPerUnit}
+                  onChange={(e) => setOpportunitiesPerUnit(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-900 focus:border-purple-500 focus:outline-hidden dark:border-slate-800 dark:bg-slate-900/90 dark:text-white"
+                  placeholder="e.g. 1"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">
+                  TOTAL DEFECTS OBSERVED
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={totalDefects}
+                  onChange={(e) => setTotalDefects(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-900 focus:border-purple-500 focus:outline-hidden dark:border-slate-800 dark:bg-slate-900/90 dark:text-white"
+                  placeholder="e.g. 15"
+                />
+              </div>
+            </div>
+            
+            {totalOpportunities === 0 && (
+              <div className="mt-3 flex items-center gap-1.5 text-xs text-rose-600 dark:text-rose-400 font-mono">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                <span>Error: Total Units and Opportunities must be strictly greater than 0.</span>
+              </div>
+            )}
+          </div>
+          
+          {/* Discrete Capability Metrics */}
+          {totalOpportunities > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <MetricCard
+                title="TOTAL OPPORTUNITIES"
+                value={totalOpportunities.toLocaleString()}
+                subtitle={`${numInspected} units × ${numOpp} opps`}
+                badgeType="neutral"
+              />
+              <MetricCard
+                title="DPMO (Defects Per Million)"
+                value={Math.round(discreteDpmo).toLocaleString()}
+                subtitle="DPMO"
+                badge={discreteDpmo < 3.4 ? '6-SIGMA' : (discreteDpmo < 66807 ? 'CAPABLE' : 'HIGH')}
+                badgeType={discreteDpmo < 66807 ? 'success' : 'danger'}
+              />
+              <MetricCard
+                title="PROCESS YIELD"
+                value={(discreteYield * 100).toFixed(4)}
+                subtitle="%"
+                badgeType={discreteYield > 0.99 ? 'success' : 'warning'}
+              />
+              <MetricCard
+                title="PROCESS SIGMA LEVEL"
+                value={discreteSigmaLevel.toFixed(2)}
+                subtitle="σ (Short Term)"
+                badge={discreteSigmaLevel >= 6 ? 'WORLD CLASS' : (discreteSigmaLevel >= 4 ? 'SATISFACTORY' : 'POOR')}
+                badgeType={discreteSigmaLevel >= 4 ? 'success' : 'danger'}
+              />
+            </div>
+          )}
+          
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/50 flex gap-3 text-sm text-slate-600 dark:text-slate-400">
+            <Info className="h-5 w-5 shrink-0 text-slate-400" />
+            <p>
+              <strong>Discrete Capability Analysis</strong> uses the Defect Per Million Opportunities (DPMO) standard. 
+              The <em>Process Sigma Level</em> displayed is calculated assuming the standard normal inverse of the Yield, shifted by a 1.5σ allowance for long-term variation drifting 
+              (<code className="px-1 text-xs">Sigma = Z(Yield) + 1.5</code>). 
+              A 6-Sigma process equates to 3.4 DPMO or ~99.99966% yield.
+            </p>
+          </div>
+        </>
+      )}
     </div>
   );
 };
