@@ -10,6 +10,9 @@ import {
   ChevronDown,
   Activity,
   FileSpreadsheet,
+  Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 import { printExecutiveReport } from '../../utils/exportUtils';
 
@@ -22,6 +25,8 @@ interface HeaderProps {
   spcResult?: SpcCalculationResult;
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
+  isSidebarOpen?: boolean;
+  onToggleSidebar?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -33,11 +38,28 @@ export const Header: React.FC<HeaderProps> = ({
   spcResult,
   theme,
   onToggleTheme,
+  isSidebarOpen = true,
+  onToggleSidebar,
 }) => {
   return (
     <header className="sticky top-0 z-40 flex h-13 w-full items-center justify-between border-b border-blue-900/60 bg-[#0a1733] px-4 backdrop-blur-md text-slate-100 shadow-md">
       {/* Brand & Title */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3 sm:gap-4">
+        {onToggleSidebar && (
+          <button
+            onClick={onToggleSidebar}
+            className="flex items-center gap-1.5 rounded border border-blue-700/70 bg-blue-950/90 px-2 py-1 text-xs font-mono font-bold text-blue-200 shadow-xs hover:bg-blue-800 hover:text-white transition-colors"
+            title={isSidebarOpen ? 'Hide side menu' : 'Show side menu'}
+          >
+            {isSidebarOpen ? (
+              <PanelLeftClose className="h-4 w-4 text-blue-400" />
+            ) : (
+              <PanelLeftOpen className="h-4 w-4 text-blue-400" />
+            )}
+            <span className="hidden md:inline">{isSidebarOpen ? 'HIDE MENU' : 'MENU'}</span>
+          </button>
+        )}
+
         <div className="flex items-center gap-2.5">
           <div className="flex h-7 w-7 items-center justify-center rounded border border-blue-400/60 bg-blue-600 shadow-sm shadow-blue-500/40">
             <Activity className="h-4 w-4 text-white" />

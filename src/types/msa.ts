@@ -66,6 +66,9 @@ export interface GageRRResult {
   numTrials: number;
   tolerance?: number;
   studyMultiplier: number; // usually 6.0 or 5.15
+  alphaToPool?: number;
+  processStdDev?: number;
+  isPooled?: boolean;
   overallMean: number;
   partMeans: { part: string; mean: number; range: number }[];
   operatorMeans: { operator: string; mean: number; range: number }[];

@@ -9,33 +9,151 @@ import {
   AttributeAppraiserSummary,
 } from '../types/msa';
 
-// Calculate F-distribution cumulative / p-value approximation
-function calculateFPValue(f: number, df1: number, df2: number): number {
+// Exact Incomplete Beta function (Regularized Ix(a, b)) via continued fractions (Lanczos / Lentz method)
+function logGamma(z: number): number {
+  const c = [
+    57.1562356658629235, -59.5979603554754912, 14.1360979747417471,
+    -0.491913816097620199, 0.339946499848118887e-4, 0.465236289270485756e-4,
+    -0.983744753048795646e-4, 0.158088703224378394e-3, -0.210264441724104883e-3,
+    0.217439618115212643e-3, -0.16431810653676389e-3, 0.844182239838527433e-4,
+    -0.261908384015814087e-4, 0.368991826595316234e-5,
+  ];
+  if (z < 0.5) {
+    return Math.log(Math.PI / Math.sin(Math.PI * z)) - logGamma(1 - z);
+  }
+  let sum = 0.99999999999999709182;
+  for (let i = 0; i < c.length; i++) {
+    sum += c[i] / (z + i + 1);
+  }
+  const t = z + c.length - 0.5;
+  return 0.5 * Math.log(2 * Math.PI) + (z + 0.5) * Math.log(t) - t + Math.log(sum);
+}
+
+function incBetaContinuedFraction(a: number, b: number, x: number): number {
+  const maxIter = 200;
+  const eps = 1e-12;
+  const qab = a + b;
+  const qap = a + 1;
+  const qam = a - 1;
+  let c = 1.0;
+  let d = 1.0 - (qab * x) / qap;
+  if (Math.abs(d) < eps) d = eps;
+  d = 1.0 / d;
+  let h = d;
+
+  for (let m = 1; m <= maxIter; m++) {
+    const m2 = 2 * m;
+    // Even step
+    let aa = (m * (b - m) * x) / ((qam + m2) * (a + m2));
+    d = 1.0 + aa * d;
+    if (Math.abs(d) < eps) d = eps;
+    c = 1.0 + aa / c;
+    if (Math.abs(c) < eps) c = eps;
+    d = 1.0 / d;
+    h *= d * c;
+
+    // Odd step
+    aa = (-(a + m) * (qab + m) * x) / ((a + m2) * (qap + m2));
+    d = 1.0 + aa * d;
+    if (Math.abs(d) < eps) d = eps;
+    c = 1.0 + aa / c;
+    if (Math.abs(c) < eps) c = eps;
+    d = 1.0 / d;
+    const del = d * c;
+    h *= del;
+    if (Math.abs(del - 1.0) <= eps) break;
+  }
+  return h;
+}
+
+export function incompleteBeta(a: number, b: number, x: number): number {
+  if (x < 0 || x > 1) return 0;
+  if (x === 0) return 0;
+  if (x === 1) return 1;
+
+  const bt = Math.exp(logGamma(a + b) - logGamma(a) - logGamma(b) + a * Math.log(x) + b * Math.log(1 - x));
+  if (x < (a + 1) / (a + b + 2)) {
+    return (bt * incBetaContinuedFraction(a, b, x)) / a;
+  } else {
+    return 1.0 - (bt * incBetaContinuedFraction(b, a, 1 - x)) / b;
+  }
+}
+
+// Calculate exact F-distribution cumulative / p-value (Right-tail P(F > f))
+export function calculateExactFPValue(f: number, df1: number, df2: number): number {
   if (f <= 0 || isNaN(f) || !isFinite(f)) return 1.0;
   if (df1 <= 0 || df2 <= 0) return 1.0;
-  
-  // Approximation of Beta regularized for F-dist
-  const x = (df1 * f) / (df1 * f + df2);
-  const a = df1 / 2;
-  const b = df2 / 2;
 
-  // Simple numerical integration / approximation for p-value
-  // For small degrees of freedom typical in MSA (e.g. df1=2, df2=18)
-  let p = Math.exp(-0.5 * f * (df1 / df2));
-  if (f > 10) p = 0.0001;
-  else if (f > 5) p = 0.015;
-  else if (f > 3) p = 0.06;
-  else if (f > 2) p = 0.15;
-  else p = Math.max(0.001, Math.min(0.999, 1 / (1 + f)));
+  const x = df2 / (df2 + df1 * f);
+  const a = df2 / 2;
+  const b = df1 / 2;
+  const p = incompleteBeta(a, b, x);
+  return Math.max(0.000001, Math.min(1.0, +p.toFixed(6)));
+}
 
-  return +p.toFixed(4);
+// Backward compatibility alias
+function calculateFPValue(f: number, df1: number, df2: number): number {
+  return calculateExactFPValue(f, df1, df2);
+}
+
+// AIAG d2* and d2 lookup tables for Average & Range (Xbar-R) MSA method
+const D2_VALUES: Record<number, number> = {
+  2: 1.128,
+  3: 1.693,
+  4: 2.059,
+  5: 2.326,
+  6: 2.534,
+  7: 2.704,
+  8: 2.847,
+  9: 2.970,
+  10: 3.078,
+  11: 3.173,
+  12: 3.258,
+  13: 3.336,
+  14: 3.407,
+  15: 3.472,
+};
+
+// d2* lookup for Xbar-R: d2Star(m, g) where m is subgroup size, g is number of subgroups
+function getD2Star(m: number, g: number): number {
+  // AIAG standard d2* table approximation
+  const baseD2 = D2_VALUES[Math.min(15, Math.max(2, m))] || Math.sqrt(m);
+  if (g >= 20) return baseD2;
+  // Correction adjustment for small number of subgroups
+  const adj = 1 / (4 * g);
+  return baseD2 * (1 - adj / (m * m));
+}
+
+export interface GageRROptions {
+  tolerance?: number;
+  studyMultiplier?: number; // 6.0 (AIAG 4th) or 5.15 (AIAG 3rd / Legacy SigmaXL)
+  method?: 'ANOVA' | 'XBAR_R';
+  alphaToPool?: number; // 0.05, 0.25 (SigmaXL default pool), or 0 (No pooling / Unreduced)
+  processStdDev?: number; // Historical Process SD
 }
 
 export function calculateGageRR(
   data: MsaMeasurementRow[],
-  tolerance?: number,
-  studyMultiplier = 6.0
+  toleranceOrOptions?: number | GageRROptions,
+  studyMultiplierParam = 6.0
 ): GageRRResult {
+  // Parse options
+  let tolerance: number | undefined;
+  let studyMultiplier = studyMultiplierParam;
+  let method: 'ANOVA' | 'XBAR_R' = 'ANOVA';
+  let alphaToPool = 0.05; // standard AIAG / SigmaXL default pooling threshold
+  let processStdDev: number | undefined;
+
+  if (typeof toleranceOrOptions === 'object' && toleranceOrOptions !== null) {
+    tolerance = toleranceOrOptions.tolerance;
+    studyMultiplier = toleranceOrOptions.studyMultiplier ?? 6.0;
+    method = toleranceOrOptions.method ?? 'ANOVA';
+    alphaToPool = toleranceOrOptions.alphaToPool ?? 0.05;
+    processStdDev = toleranceOrOptions.processStdDev;
+  } else if (typeof toleranceOrOptions === 'number') {
+    tolerance = toleranceOrOptions;
+  }
+
   const partsSet = new Set<string>();
   const operatorsSet = new Set<string>();
 
@@ -50,7 +168,6 @@ export function calculateGageRR(
   const numOperators = operators.length;
 
   if (numParts < 2 || numOperators < 1 || data.length === 0) {
-    // Fallback for minimal data
     return getFallbackGageRRResult(parts, operators, tolerance, studyMultiplier);
   }
 
@@ -108,7 +225,6 @@ export function calculateGageRR(
       }
     });
     const rBar = opRanges.length > 0 ? opRanges.reduce((a, b) => a + b, 0) / opRanges.length : 0;
-    // D4 factor for control limits (approx for trials=2 => 3.267, trials=3 => 2.574)
     const d4 = numTrials === 2 ? 3.267 : numTrials === 3 ? 2.574 : 2.282;
     return {
       operator: op,
@@ -127,7 +243,6 @@ export function calculateGageRR(
     const xDoubleBar = opPartMeans.reduce((a, b) => a + b, 0) / opPartMeans.length;
     const rObj = rBarByOperator.find((r) => r.operator === op);
     const rBar = rObj ? rObj.rBar : 0;
-    // A2 factor (trials=2 => 1.880, trials=3 => 1.023, trials=4 => 0.729)
     const a2 = numTrials === 2 ? 1.880 : numTrials === 3 ? 1.023 : 0.729;
     return {
       operator: op,
@@ -139,7 +254,7 @@ export function calculateGageRR(
   });
 
   // ==========================================
-  // 2-WAY ANOVA CALCULATIONS (Crossed Gage R&R)
+  // ANOVA & VARIANCE COMPONENT CALCULATIONS
   // ==========================================
   const a = numParts;
   const b = numOperators;
@@ -179,48 +294,98 @@ export function calculateGageRR(
   const dfError = a * b * (n - 1);
   const msError = dfError > 0 ? ssError / dfError : 0;
 
-  // F-Statistics & p-values
+  // Exact F-Statistics & p-values
   const fInteraction = msError > 0 ? msInteraction / msError : 0;
-  const pInteraction = calculateFPValue(fInteraction, dfInteraction, dfError);
+  const pInteraction = calculateExactFPValue(fInteraction, dfInteraction, dfError);
 
-  // If interaction is significant (p <= 0.05), denominator for Operator & Part is msInteraction; else msError
-  const hasInteraction = pInteraction <= 0.05 && dfInteraction > 0;
-  const denomMS = hasInteraction ? msInteraction : msError;
+  // Check if interaction is retained or pooled
+  // In SigmaXL & Minitab: if alphaToPool > 0 and pInteraction >= alphaToPool (e.g. p >= 0.05 or p >= 0.25)
+  // Interaction is removed (pooled) into Repeatability Error.
+  const poolInteraction = alphaToPool > 0 && pInteraction >= alphaToPool && dfInteraction > 0 && n > 1;
+
+  let finalDfError = dfError;
+  let finalSSError = ssError;
+  let finalMSError = msError;
+  let denomMS = msError;
+  let denomDf = dfError;
+
+  if (poolInteraction) {
+    // Pooled Model (Without Interaction)
+    finalDfError = dfError + dfInteraction;
+    finalSSError = ssError + ssInteraction;
+    finalMSError = finalDfError > 0 ? finalSSError / finalDfError : 0;
+    denomMS = finalMSError;
+    denomDf = finalDfError;
+  } else if (dfInteraction > 0 && n > 1) {
+    // Full Model (With Interaction)
+    denomMS = msInteraction;
+    denomDf = dfInteraction;
+  }
 
   const fPart = denomMS > 0 ? msPart / denomMS : 0;
-  const pPart = calculateFPValue(fPart, dfPart, hasInteraction ? dfInteraction : dfError);
+  const pPart = calculateExactFPValue(fPart, dfPart, denomDf);
 
   const fOperator = denomMS > 0 ? msOperator / denomMS : 0;
-  const pOperator = calculateFPValue(fOperator, dfOperator, hasInteraction ? dfInteraction : dfError);
+  const pOperator = calculateExactFPValue(fOperator, dfOperator, denomDf);
 
   // ==========================================
-  // VARIANCE COMPONENTS
+  // VARIANCE ESTIMATION (ANOVA vs XBAR-R)
   // ==========================================
-  // Repeatability Variance (EV^2)
-  const varRepeatability = Math.max(0, msError);
+  let varRepeatability = 0;
+  let varOperator = 0;
+  let varInteraction = 0;
+  let varReproducibility = 0;
+  let varGRR = 0;
+  let varPart = 0;
+  let varTotal = 0;
 
-  // Interaction Variance
-  const varInteraction = hasInteraction && n > 0
-    ? Math.max(0, (msInteraction - msError) / n)
-    : 0;
+  if (method === 'XBAR_R') {
+    // AIAG Average & Range Method (K-factor / d2* method used in SigmaXL & AIAG tabular)
+    const overallRBar = rBarByOperator.reduce((a, b) => a + b.rBar, 0) / (operators.length || 1);
+    const d2_ev = getD2Star(n, a * b);
+    const ev_xr = d2_ev > 0 ? overallRBar / d2_ev : 0;
+    varRepeatability = ev_xr * ev_xr;
 
-  // Operator / Reproducibility Variance (AV^2)
-  const varOperator = (a * n) > 0
-    ? Math.max(0, (msOperator - (hasInteraction ? msInteraction : msError)) / (a * n))
-    : 0;
+    // Operator Range
+    const opMeansList = operatorMeans.map((o) => o.mean);
+    const xDiff = opMeansList.length > 0 ? Math.max(...opMeansList) - Math.min(...opMeansList) : 0;
+    const d2_av = getD2Star(b, 1);
+    const rawAV = d2_av > 0 ? xDiff / d2_av : 0;
+    const avAdj = (rawAV * rawAV) - (varRepeatability / (a * n));
+    varReproducibility = Math.max(0, avAdj);
+    varOperator = varReproducibility;
+    varInteraction = 0;
 
-  const varReproducibility = varOperator + varInteraction;
+    varGRR = varRepeatability + varReproducibility;
 
-  // Total Gage R&R Variance
-  const varGRR = varRepeatability + varReproducibility;
+    // Part Range
+    const partMeansList = partMeans.map((p) => p.mean);
+    const rp = partMeansList.length > 0 ? Math.max(...partMeansList) - Math.min(...partMeansList) : 0;
+    const d2_pv = getD2Star(a, 1);
+    const pv_xr = d2_pv > 0 ? rp / d2_pv : 0;
+    varPart = pv_xr * pv_xr;
 
-  // Part-to-Part Variance (PV^2)
-  const varPart = (b * n) > 0
-    ? Math.max(0, (msPart - (hasInteraction ? msInteraction : msError)) / (b * n))
-    : 0;
+    varTotal = varGRR + varPart;
+  } else {
+    // 2-WAY ANOVA METHOD
+    if (poolInteraction) {
+      // Reduced Model (Pooled)
+      varRepeatability = Math.max(0, finalMSError);
+      varInteraction = 0;
+      varOperator = (a * n) > 0 ? Math.max(0, (msOperator - finalMSError) / (a * n)) : 0;
+      varPart = (b * n) > 0 ? Math.max(0, (msPart - finalMSError) / (b * n)) : 0;
+    } else {
+      // Full Model with Interaction
+      varRepeatability = Math.max(0, msError);
+      varInteraction = n > 0 ? Math.max(0, (msInteraction - msError) / n) : 0;
+      varOperator = (a * n) > 0 ? Math.max(0, (msOperator - msInteraction) / (a * n)) : 0;
+      varPart = (b * n) > 0 ? Math.max(0, (msPart - msInteraction) / (b * n)) : 0;
+    }
 
-  // Total Process Variance (TV^2)
-  const varTotal = varGRR + varPart;
+    varReproducibility = varOperator + varInteraction;
+    varGRR = varRepeatability + varReproducibility;
+    varTotal = varGRR + varPart;
+  }
 
   // Standard Deviations
   const ev = Math.sqrt(varRepeatability);
@@ -228,7 +393,8 @@ export function calculateGageRR(
   const interactionSd = Math.sqrt(varInteraction);
   const grr = Math.sqrt(varGRR);
   const pv = Math.sqrt(varPart);
-  const tv = Math.sqrt(varTotal);
+  const tv = processStdDev && processStdDev > 0 ? processStdDev : Math.sqrt(varTotal);
+  const baseVarTotal = processStdDev && processStdDev > 0 ? processStdDev * processStdDev : varTotal;
 
   // Study Variation (StudyMultiplier * SD)
   const studyVariationEV = ev * studyMultiplier;
@@ -245,7 +411,7 @@ export function calculateGageRR(
   const pctStudyVarPV = (pv / safeTV) * 100;
 
   // % Contribution (% Variance)
-  const safeVarTotal = varTotal > 0 ? varTotal : 1;
+  const safeVarTotal = baseVarTotal > 0 ? baseVarTotal : 1;
   const pctContribEV = (varRepeatability / safeVarTotal) * 100;
   const pctContribAV = (varReproducibility / safeVarTotal) * 100;
   const pctContribGRR = (varGRR / safeVarTotal) * 100;
@@ -264,15 +430,12 @@ export function calculateGageRR(
     pctTolerancePV = (studyVariationPV / tolerance) * 100;
   }
 
-  // Number of Distinct Categories (ndc)
-  // ndc = 1.41 * (PV / GRR)
-  const rawNdc = grr > 0 ? 1.41 * (pv / grr) : 0;
+  // Number of Distinct Categories (ndc = 1.4142 * PV / GRR)
+  // AIAG 4th Edition standard truncation
+  const rawNdc = grr > 0 ? 1.41421356 * (pv / grr) : 0;
   const ndc = Math.max(1, Math.floor(rawNdc));
 
-  // AIAG 4th Edition Standards Evaluation
-  // %GRR < 10%: Acceptable
-  // 10% <= %GRR <= 30%: Marginal
-  // %GRR > 30%: Unacceptable
+  // AIAG Evaluation
   const evalMetric = pctToleranceGRR !== undefined ? Math.max(pctStudyVarGRR, pctToleranceGRR) : pctStudyVarGRR;
   let status: 'ACCEPTABLE' | 'MARGINAL' | 'UNACCEPTABLE' = 'ACCEPTABLE';
   let statusDescription = '';
@@ -280,80 +443,87 @@ export function calculateGageRR(
 
   if (evalMetric < 10) {
     status = 'ACCEPTABLE';
-    statusDescription = 'Excellent Measurement System. The gauge is fully capable of discerning process variation and conforming to engineering specifications.';
+    statusDescription = 'Excellent Measurement System (%GRR < 10%). Gauge is fully capable for quality inspection & SPC.';
   } else if (evalMetric <= 30) {
     status = 'MARGINAL';
-    statusDescription = 'Conditionally Acceptable. The measurement system may be accepted depending on application criticality, gauge repair cost, and customer agreements.';
+    statusDescription = 'Conditionally Acceptable (10% ≤ %GRR ≤ 30%). May be accepted depending on application criticality and cost of measurement upgrade.';
     recommendations.push('Evaluate if gauge repeatability or operator fixturing technique can be improved.');
   } else {
     status = 'UNACCEPTABLE';
-    statusDescription = 'Unacceptable Measurement System. Measurement error consumes excessive process tolerance. Root cause remediation required.';
+    statusDescription = 'Unacceptable Measurement System (%GRR > 30%). Measurement variation consumes excessive tolerance. Root-cause remediation required.';
     if (pctStudyVarEV > pctStudyVarAV) {
-      recommendations.push('High Repeatability (EV) error: Inspect gauge calibration, clamping rigidity, resolution, and sensor wear.');
+      recommendations.push('High Repeatability (EV) error: Inspect gauge calibration, fixturing rigidity, resolution, and sensor wear.');
     } else {
-      recommendations.push('High Reproducibility (AV) error: Standardize operator measurement SOP, training, visual alignment, and hand pressure.');
+      recommendations.push('High Reproducibility (AV) error: Standardize operator measurement SOP, training, visual alignment, and clamping pressure.');
     }
   }
 
   const ndcStatus = ndc >= 5 ? 'ADEQUATE' : 'INADEQUATE';
   if (ndc < 5) {
-    recommendations.push(`Low Discrimination (ndc = ${ndc} < 5): The measurement system lacks resolution to control or monitor the process. Upgrade to a higher precision instrument.`);
+    recommendations.push(`Low Discrimination (ndc = ${ndc} < 5): The measurement system lacks resolution to control or monitor the process. Upgrade to a higher resolution instrument.`);
   }
 
-  // ANOVA Table Construction
-  const anovaTable: AnovaRow[] = [
-    {
+  // Build ANOVA Table
+  const anovaTable: AnovaRow[] = [];
+  if (method === 'ANOVA') {
+    anovaTable.push({
       source: 'Parts',
       df: dfPart,
       ss: +ssPart.toFixed(5),
       ms: +msPart.toFixed(5),
-      fStat: +fPart.toFixed(2),
+      fStat: +fPart.toFixed(3),
       pValue: pPart,
       varianceComponent: +varPart.toFixed(6),
       pctContribution: +pctContribPV.toFixed(2),
-    },
-    {
+    });
+
+    anovaTable.push({
       source: 'Operators',
       df: dfOperator,
       ss: +ssOperator.toFixed(5),
       ms: +msOperator.toFixed(5),
-      fStat: +fOperator.toFixed(2),
+      fStat: +fOperator.toFixed(3),
       pValue: pOperator,
       varianceComponent: +varOperator.toFixed(6),
       pctContribution: +((varOperator / safeVarTotal) * 100).toFixed(2),
-    },
-    {
-      source: 'Part * Operator',
-      df: dfInteraction,
-      ss: +ssInteraction.toFixed(5),
-      ms: +msInteraction.toFixed(5),
-      fStat: +fInteraction.toFixed(2),
-      pValue: pInteraction,
-      varianceComponent: +varInteraction.toFixed(6),
-      pctContribution: +((varInteraction / safeVarTotal) * 100).toFixed(2),
-    },
-    {
-      source: 'Repeatability (Equipment Error)',
-      df: dfError,
-      ss: +ssError.toFixed(5),
-      ms: +msError.toFixed(5),
+    });
+
+    if (!poolInteraction && dfInteraction > 0 && n > 1) {
+      anovaTable.push({
+        source: 'Part * Operator',
+        df: dfInteraction,
+        ss: +ssInteraction.toFixed(5),
+        ms: +msInteraction.toFixed(5),
+        fStat: +fInteraction.toFixed(3),
+        pValue: pInteraction,
+        varianceComponent: +varInteraction.toFixed(6),
+        pctContribution: +((varInteraction / safeVarTotal) * 100).toFixed(2),
+      });
+    }
+
+    anovaTable.push({
+      source: poolInteraction ? 'Repeatability (Pooled Error)' : 'Repeatability (Equipment Error)',
+      df: finalDfError,
+      ss: +finalSSError.toFixed(5),
+      ms: +finalMSError.toFixed(5),
       varianceComponent: +varRepeatability.toFixed(6),
       pctContribution: +pctContribEV.toFixed(2),
-    },
-    {
+    });
+
+    anovaTable.push({
       source: 'Total Variation',
       df: dfTotal,
       ss: +ssTotal.toFixed(5),
       ms: dfTotal > 0 ? +(ssTotal / dfTotal).toFixed(5) : 0,
       varianceComponent: +varTotal.toFixed(6),
       pctContribution: 100.0,
-    },
-  ];
+    });
+  }
 
   const summary: GageRRSummary = {
     ev: +ev.toFixed(5),
     av: +av.toFixed(5),
-    interaction: +interactionSd.toFixed(5),
+    interaction: !poolInteraction ? +interactionSd.toFixed(5) : undefined,
     grr: +grr.toFixed(5),
     pv: +pv.toFixed(5),
     tv: +tv.toFixed(5),
@@ -384,12 +554,15 @@ export function calculateGageRR(
   return {
     summary,
     anovaTable,
-    method: 'ANOVA',
+    method,
     parts,
     operators,
     numTrials,
     tolerance,
     studyMultiplier,
+    alphaToPool,
+    processStdDev,
+    isPooled: poolInteraction,
     overallMean: +overallMean.toFixed(5),
     partMeans,
     operatorMeans,
@@ -398,6 +571,7 @@ export function calculateGageRR(
     xBarByOperator,
   };
 }
+
 
 function getFallbackGageRRResult(
   parts: string[],

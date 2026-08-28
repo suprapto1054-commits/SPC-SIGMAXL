@@ -7,30 +7,59 @@ import {
   XCircle,
   BarChart3,
   Layers,
-  HelpCircle,
+  Sliders,
+  Settings2,
 } from 'lucide-react';
 
 interface GageRRViewProps {
   result: GageRRResult;
   unit?: string;
   onUpdateTolerance?: (tolerance: number) => void;
+  onUpdateOptions?: (opts: {
+    method?: 'ANOVA' | 'XBAR_R';
+    studyMultiplier?: number;
+    alphaToPool?: number;
+    processStdDev?: number;
+  }) => void;
+  currentMethod?: 'ANOVA' | 'XBAR_R';
+  currentStudyMultiplier?: number;
+  currentAlphaToPool?: number;
+  currentProcessStdDev?: number;
 }
 
 export const GageRRView: React.FC<GageRRViewProps> = ({
   result,
   unit = 'mm',
   onUpdateTolerance,
+  onUpdateOptions,
+  currentMethod = 'ANOVA',
+  currentStudyMultiplier = 6.0,
+  currentAlphaToPool = 0.05,
+  currentProcessStdDev,
 }) => {
   const { summary, anovaTable, parts, operators, numTrials } = result;
   const [toleranceInput, setToleranceInput] = useState<string>(
     result.tolerance ? String(result.tolerance) : ''
   );
+  const [processSdInput, setProcessSdInput] = useState<string>(
+    currentProcessStdDev ? String(currentProcessStdDev) : ''
+  );
+  const [showConfig, setShowConfig] = useState(false);
   const [showAnova, setShowAnova] = useState(true);
 
   const handleApplyTolerance = () => {
     const parsed = parseFloat(toleranceInput);
     if (!isNaN(parsed) && parsed > 0 && onUpdateTolerance) {
       onUpdateTolerance(parsed);
+    }
+  };
+
+  const handleApplyProcessSd = () => {
+    const parsed = parseFloat(processSdInput);
+    if (onUpdateOptions) {
+      onUpdateOptions({
+        processStdDev: !isNaN(parsed) && parsed > 0 ? parsed : undefined,
+      });
     }
   };
 
@@ -75,22 +104,117 @@ export const GageRRView: React.FC<GageRRViewProps> = ({
                   GAGE REPEATABILITY & REPRODUCIBILITY (GAGE R&R)
                 </span>
                 <span className="rounded border border-slate-300 bg-slate-100 px-1.5 py-0.5 font-mono text-[9px] font-bold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                  AIAG MSA 4TH ED
+                  {result.method === 'XBAR_R' ? 'X̄-R (AIAG Tabular)' : result.isPooled ? 'ANOVA (Pooled)' : 'ANOVA (Full)'}
+                </span>
+                <span className="rounded border border-cyan-500/30 bg-cyan-500/10 px-1.5 py-0.5 font-mono text-[9px] font-bold text-cyan-600 dark:text-cyan-400">
+                  {currentStudyMultiplier}σ Spread
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono mt-0.5">
-                2-Way ANOVA Crossed Model • {parts.length} Parts × {operators.length} Appraisers × {numTrials} Replicate Trials ({parts.length * operators.length * numTrials} total runs)
+                {parts.length} Parts × {operators.length} Appraisers × {numTrials} Replicate Trials ({parts.length * operators.length * numTrials} total runs)
+                {result.isPooled && ' • Interaction term pooled (p ≥ α)'}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowConfig(!showConfig)}
+              className="flex items-center gap-1.5 rounded border border-slate-300 bg-slate-50 px-2.5 py-1.5 font-mono text-xs font-bold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+            >
+              <Settings2 className="h-3.5 w-3.5" />
+              SigmaXL / AIAG Calibration
+            </button>
             <span className={`flex items-center gap-1.5 rounded border px-3 py-1 font-mono text-xs font-bold ${statusInfo.bg}`}>
               <StatusIcon className="h-4 w-4" />
               {statusInfo.label}
             </span>
           </div>
         </div>
+
+        {/* SigmaXL / Statistical Calibration Toolbar */}
+        {showConfig && (
+          <div className="mt-3 rounded border border-cyan-500/30 bg-cyan-500/5 p-3 font-mono text-xs text-slate-800 dark:text-slate-200">
+            <div className="flex items-center gap-2 font-bold text-cyan-700 dark:text-cyan-400 mb-2">
+              <Sliders className="h-4 w-4" />
+              <span>SIGMAXL & MINITAB CALIBRATION SETTINGS</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+              {/* Method Selection */}
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400 mb-1">
+                  Estimation Method
+                </label>
+                <select
+                  value={currentMethod}
+                  onChange={(e) => onUpdateOptions?.({ method: e.target.value as 'ANOVA' | 'XBAR_R' })}
+                  className="w-full rounded border border-slate-300 bg-white p-1 text-xs font-bold dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                >
+                  <option value="ANOVA">2-Way ANOVA (Crossed)</option>
+                  <option value="XBAR_R">X̄-R (Average & Range / d2*)</option>
+                </select>
+              </div>
+
+              {/* Study Multiplier */}
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400 mb-1">
+                  Study Multiplier (K-Sigma)
+                </label>
+                <select
+                  value={currentStudyMultiplier}
+                  onChange={(e) => onUpdateOptions?.({ studyMultiplier: parseFloat(e.target.value) })}
+                  className="w-full rounded border border-slate-300 bg-white p-1 text-xs font-bold dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                >
+                  <option value="6.0">6.00σ (AIAG 4th Ed / 99.73%)</option>
+                  <option value="5.15">5.15σ (AIAG 3rd Ed / SigmaXL Legacy 99.0%)</option>
+                </select>
+              </div>
+
+              {/* Interaction Alpha to Pool */}
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400 mb-1">
+                  Alpha to Remove Interaction
+                </label>
+                <select
+                  value={currentAlphaToPool}
+                  onChange={(e) => onUpdateOptions?.({ alphaToPool: parseFloat(e.target.value) })}
+                  className="w-full rounded border border-slate-300 bg-white p-1 text-xs font-bold dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  disabled={currentMethod === 'XBAR_R'}
+                >
+                  <option value="0.05">α = 0.05 (Standard AIAG)</option>
+                  <option value="0.25">α = 0.25 (SigmaXL / Minitab Default)</option>
+                  <option value="0">Never Pool (Full Model Only)</option>
+                </select>
+              </div>
+
+              {/* Historical Process StdDev */}
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400 mb-1">
+                  Historical Process SD (Optional)
+                </label>
+                <div className="flex gap-1">
+                  <input
+                    type="number"
+                    step="any"
+                    value={processSdInput}
+                    onChange={(e) => setProcessSdInput(e.target.value)}
+                    placeholder="e.g. 1.25"
+                    className="w-full rounded border border-slate-300 bg-white p-1 text-xs font-bold dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  />
+                  <button
+                    onClick={handleApplyProcessSd}
+                    className="rounded bg-cyan-600 px-2 text-[10px] font-bold text-white hover:bg-cyan-500"
+                  >
+                    Set
+                  </button>
+                </div>
+              </div>
+            </div>
+            <p className="mt-2 text-[10px] text-slate-500 dark:text-slate-400">
+              *Tip: SigmaXL uses ANOVA with α = 0.25 (or α = 0.05) to pool interaction into error when not statistically significant. Set to 5.15σ if comparing against AIAG 3rd Edition outputs.
+            </p>
+          </div>
+        )}
 
         {/* Executive Metrics Industrial Cards */}
         <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-mono">
@@ -231,7 +355,8 @@ export const GageRRView: React.FC<GageRRViewProps> = ({
             </h3>
           </div>
           <span className="font-mono text-[10px] text-slate-500">
-            Study Multiplier: 6.00σ (99.73% Process Spread)
+            Study Multiplier: {currentStudyMultiplier.toFixed(2)}σ ({currentStudyMultiplier === 5.15 ? '99.0% AIAG 3rd' : '99.73% AIAG 4th'})
+            {summary.pctProcessVarGRR !== undefined && ` • Historical Process SD: ${currentProcessStdDev}`}
           </span>
         </div>
 
@@ -241,9 +366,12 @@ export const GageRRView: React.FC<GageRRViewProps> = ({
               <tr className="border-b border-slate-200 text-[10px] font-bold uppercase text-slate-500 dark:border-slate-800 dark:text-slate-400">
                 <th className="py-2 pr-4">Variation Source</th>
                 <th className="py-2 px-3 text-right">StdDev (σ)</th>
-                <th className="py-2 px-3 text-right">Study Var (6.0×σ)</th>
+                <th className="py-2 px-3 text-right">Study Var ({currentStudyMultiplier.toFixed(2)}×σ)</th>
                 <th className="py-2 px-3 text-right">% Study Var (%SV)</th>
                 <th className="py-2 px-3 text-right">% Contribution</th>
+                {summary.pctProcessVarGRR !== undefined && (
+                  <th className="py-2 px-3 text-right">% Process Var (%PV)</th>
+                )}
                 {summary.pctToleranceGRR !== undefined && (
                   <th className="py-2 pl-3 text-right">% Tolerance (P/T)</th>
                 )}
@@ -259,6 +387,9 @@ export const GageRRView: React.FC<GageRRViewProps> = ({
                 <td className="py-2 px-3 text-right text-slate-700 dark:text-slate-300">{summary.studyVariationGRR.toFixed(5)}</td>
                 <td className="py-2 px-3 text-right text-rose-600 dark:text-rose-400">{summary.pctStudyVarGRR.toFixed(2)}%</td>
                 <td className="py-2 px-3 text-right text-slate-700 dark:text-slate-300">{summary.pctContribGRR.toFixed(2)}%</td>
+                {summary.pctProcessVarGRR !== undefined && (
+                  <td className="py-2 px-3 text-right text-rose-600 dark:text-rose-400">{summary.pctProcessVarGRR.toFixed(2)}%</td>
+                )}
                 {summary.pctToleranceGRR !== undefined && (
                   <td className="py-2 pl-3 text-right text-rose-600 dark:text-rose-400">{summary.pctToleranceGRR.toFixed(2)}%</td>
                 )}
@@ -271,6 +402,9 @@ export const GageRRView: React.FC<GageRRViewProps> = ({
                 <td className="py-1.5 px-3 text-right text-slate-600 dark:text-slate-400">{summary.studyVariationEV.toFixed(5)}</td>
                 <td className="py-1.5 px-3 text-right text-slate-600 dark:text-slate-400">{summary.pctStudyVarEV.toFixed(2)}%</td>
                 <td className="py-1.5 px-3 text-right text-slate-600 dark:text-slate-400">{summary.pctContribEV.toFixed(2)}%</td>
+                {summary.pctProcessVarEV !== undefined && (
+                  <td className="py-1.5 px-3 text-right text-slate-600 dark:text-slate-400">{summary.pctProcessVarEV.toFixed(2)}%</td>
+                )}
                 {summary.pctToleranceEV !== undefined && (
                   <td className="py-1.5 pl-3 text-right text-slate-600 dark:text-slate-400">{summary.pctToleranceEV.toFixed(2)}%</td>
                 )}
@@ -283,6 +417,9 @@ export const GageRRView: React.FC<GageRRViewProps> = ({
                 <td className="py-1.5 px-3 text-right text-slate-600 dark:text-slate-400">{summary.studyVariationAV.toFixed(5)}</td>
                 <td className="py-1.5 px-3 text-right text-slate-600 dark:text-slate-400">{summary.pctStudyVarAV.toFixed(2)}%</td>
                 <td className="py-1.5 px-3 text-right text-slate-600 dark:text-slate-400">{summary.pctContribAV.toFixed(2)}%</td>
+                {summary.pctProcessVarAV !== undefined && (
+                  <td className="py-1.5 px-3 text-right text-slate-600 dark:text-slate-400">{summary.pctProcessVarAV.toFixed(2)}%</td>
+                )}
                 {summary.pctToleranceAV !== undefined && (
                   <td className="py-1.5 pl-3 text-right text-slate-600 dark:text-slate-400">{summary.pctToleranceAV.toFixed(2)}%</td>
                 )}
@@ -296,6 +433,9 @@ export const GageRRView: React.FC<GageRRViewProps> = ({
                 <td className="py-2 px-3 text-right text-slate-700 dark:text-slate-300">{summary.studyVariationPV.toFixed(5)}</td>
                 <td className="py-2 px-3 text-right text-cyan-600 dark:text-cyan-400">{summary.pctStudyVarPV.toFixed(2)}%</td>
                 <td className="py-2 px-3 text-right text-slate-700 dark:text-slate-300">{summary.pctContribPV.toFixed(2)}%</td>
+                {summary.pctProcessVarPV !== undefined && (
+                  <td className="py-2 px-3 text-right text-cyan-600 dark:text-cyan-400">{summary.pctProcessVarPV.toFixed(2)}%</td>
+                )}
                 {summary.pctTolerancePV !== undefined && (
                   <td className="py-2 pl-3 text-right text-cyan-600 dark:text-cyan-400">{summary.pctTolerancePV.toFixed(2)}%</td>
                 )}
@@ -306,6 +446,7 @@ export const GageRRView: React.FC<GageRRViewProps> = ({
                 <td className="py-2 px-3 text-right">{summary.studyVariationTV.toFixed(5)}</td>
                 <td className="py-2 px-3 text-right">100.00%</td>
                 <td className="py-2 px-3 text-right">100.00%</td>
+                {summary.pctProcessVarGRR !== undefined && <td className="py-2 px-3 text-right">—</td>}
                 {summary.pctToleranceGRR !== undefined && <td className="py-2 pl-3 text-right">—</td>}
               </tr>
             </tbody>

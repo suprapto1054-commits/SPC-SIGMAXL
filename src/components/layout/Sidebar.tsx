@@ -14,19 +14,36 @@ import {
   CheckCircle2,
   Ruler,
   Zap,
+  ChevronLeft,
+  X,
+  Sliders,
+  Compass,
+  Shuffle,
 } from 'lucide-react';
 
 interface SidebarProps {
   activeTab: string;
   onSelectTab: (tab: string) => void;
   violationsCount?: number;
+  isOpen?: boolean;
+  onClose?: () => void;
+  autoHideOnClick?: boolean;
+  onToggleAutoHide?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
   activeTab,
   onSelectTab,
   violationsCount = 0,
+  isOpen = true,
+  onClose,
+  autoHideOnClick = true,
+  onToggleAutoHide,
 }) => {
+  if (!isOpen) {
+    return null;
+  }
+
   const sections = [
     {
       title: 'CORE TELEMETRY',
@@ -92,8 +109,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
       ],
     },
     {
-      title: 'AI QUALITY & ENERGY AGENT',
+      title: 'SMART ADVISOR & AI AGENT',
       items: [
+        {
+          id: 'chart-advisor',
+          label: 'Smart Chart Advisor & Random',
+          icon: Compass,
+          badge: 'RECOMMENDER',
+          badgeColor: 'bg-indigo-500/20 text-indigo-300 border border-indigo-400/40',
+        },
         { id: 'auto-analysis', label: 'AI Executive Audit', icon: Sparkles },
         { id: 'root-cause', label: '5-Why & 6M Fishbone', icon: GitPullRequest },
       ],
@@ -107,9 +131,33 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
   ];
 
+  const handleItemClick = (id: string) => {
+    onSelectTab(id);
+    if (autoHideOnClick && onClose) {
+      onClose();
+    }
+  };
+
   return (
-    <aside className="w-58 shrink-0 border-r border-blue-900/50 bg-[#091428] dark:border-blue-950/80 dark:bg-[#070f20] p-2.5 overflow-y-auto flex flex-col justify-between shadow-md text-slate-200">
-      <div className="space-y-3.5">
+    <aside className="w-58 shrink-0 border-r border-blue-900/50 bg-[#091428] dark:border-blue-950/80 dark:bg-[#070f20] p-2.5 overflow-y-auto flex flex-col justify-between shadow-md text-slate-200 z-30">
+      <div className="space-y-3">
+        {/* Top Header with Close Button */}
+        <div className="flex items-center justify-between border-b border-blue-900/60 pb-2 px-1">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-blue-300 font-mono flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
+            NAVIGATION
+          </span>
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="rounded p-1 text-slate-400 hover:bg-blue-900/60 hover:text-white transition-colors"
+              title="Hide Side Menu"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+
         {sections.map((sec, idx) => (
           <div key={idx}>
             <h4 className="px-2 text-[9px] font-bold uppercase tracking-widest text-blue-400/90 dark:text-blue-400 font-mono">
@@ -123,7 +171,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 return (
                   <button
                     key={item.id}
-                    onClick={() => onSelectTab(item.id)}
+                    onClick={() => handleItemClick(item.id)}
                     className={`flex w-full items-center justify-between rounded px-2.5 py-1.5 text-xs transition-all font-mono ${
                       isActive
                         ? 'bg-blue-600 text-white font-bold border border-blue-400/40 shadow-sm shadow-blue-600/30'
@@ -148,20 +196,34 @@ export const Sidebar: React.FC<SidebarProps> = ({
         ))}
       </div>
 
-      <div className="mt-4 p-2.5 rounded border border-blue-800/60 bg-blue-950/80 text-[10px] font-mono shadow-xs text-blue-100">
-        <div className="flex items-center justify-between text-[9px] font-bold uppercase tracking-tight text-blue-300">
-          <span className="flex items-center gap-1.5">
-            <Zap className="w-3 h-3 text-blue-400" />
-            TELEMETRY ENGINE
-          </span>
-          <span className="text-blue-400">0.4ms</span>
-        </div>
-        <div className="flex items-center justify-between mt-1 text-slate-300 text-[10px]">
-          <span className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span>
-            ACTIVE GRID SYNC
-          </span>
-          <span className="text-emerald-400 font-bold text-[9px]">ISO 50001</span>
+      <div className="mt-4 space-y-2">
+        {onToggleAutoHide && (
+          <button
+            onClick={onToggleAutoHide}
+            className="w-full flex items-center justify-between px-2 py-1 rounded bg-blue-950/60 border border-blue-900/70 text-[9px] font-mono text-blue-300 hover:bg-blue-900/50 transition-colors"
+          >
+            <span>Auto-hide after click:</span>
+            <span className={`font-bold ${autoHideOnClick ? 'text-emerald-400' : 'text-slate-400'}`}>
+              {autoHideOnClick ? 'ON' : 'OFF'}
+            </span>
+          </button>
+        )}
+
+        <div className="p-2 rounded border border-blue-800/60 bg-blue-950/80 text-[10px] font-mono shadow-xs text-blue-100">
+          <div className="flex items-center justify-between text-[9px] font-bold uppercase tracking-tight text-blue-300">
+            <span className="flex items-center gap-1.5">
+              <Zap className="w-3 h-3 text-blue-400" />
+              TELEMETRY ENGINE
+            </span>
+            <span className="text-blue-400">0.4ms</span>
+          </div>
+          <div className="flex items-center justify-between mt-1 text-slate-300 text-[10px]">
+            <span className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span>
+              ACTIVE GRID SYNC
+            </span>
+            <span className="text-emerald-400 font-bold text-[9px]">ISO 50001</span>
+          </div>
         </div>
       </div>
     </aside>

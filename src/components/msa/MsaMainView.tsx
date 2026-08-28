@@ -20,6 +20,12 @@ export const MsaMainView: React.FC = () => {
   const [activeStudyId, setActiveStudyId] = useState<string>(MSA_SAMPLE_STUDIES[0].id);
   const [activeSubTab, setActiveSubTab] = useState<'grr' | 'type1' | 'attribute' | 'raw-data'>('grr');
 
+  // Statistical calibration state for Gage R&R
+  const [grrMethod, setGrrMethod] = useState<'ANOVA' | 'XBAR_R'>('ANOVA');
+  const [grrMultiplier, setGrrMultiplier] = useState<number>(6.0);
+  const [grrAlphaToPool, setGrrAlphaToPool] = useState<number>(0.05);
+  const [grrProcessSd, setGrrProcessSd] = useState<number | undefined>(undefined);
+
   const currentStudy = useMemo(() => {
     return studies.find((s) => s.id === activeStudyId) || studies[0];
   }, [studies, activeStudyId]);
@@ -38,16 +44,32 @@ export const MsaMainView: React.FC = () => {
 
   // Gage R&R Calculation
   const gageRRResult = useMemo(() => {
-    return calculateGageRR(currentStudy.data, currentStudy.tolerance, currentStudy.studyMultiplier);
-  }, [currentStudy.data, currentStudy.tolerance, currentStudy.studyMultiplier]);
+    return calculateGageRR(
+      currentStudy.data,
+      currentStudy.tolerance,
+      {
+        method: grrMethod,
+        studyMultiplier: grrMultiplier,
+        alphaToPool: grrAlphaToPool,
+        processStdDev: grrProcessSd,
+      }
+    );
+  }, [
+    currentStudy.data,
+    currentStudy.tolerance,
+    grrMethod,
+    grrMultiplier,
+    grrAlphaToPool,
+    grrProcessSd,
+  ]);
 
   // Type 1 Gage Calculation
   const type1Result = useMemo(() => {
     const vals = currentStudy.type1Values || [];
     const ref = currentStudy.referenceValue || 50.0;
     const tol = currentStudy.tolerance || 0.050;
-    return calculateType1GageStudy(vals, ref, tol, currentStudy.studyMultiplier);
-  }, [currentStudy.type1Values, currentStudy.referenceValue, currentStudy.tolerance, currentStudy.studyMultiplier]);
+    return calculateType1GageStudy(vals, ref, tol, grrMultiplier);
+  }, [currentStudy.type1Values, currentStudy.referenceValue, currentStudy.tolerance, grrMultiplier]);
 
   // Attribute MSA Calculation
   const attributeResult = useMemo(() => {
@@ -60,6 +82,18 @@ export const MsaMainView: React.FC = () => {
     setStudies((prev) =>
       prev.map((s) => (s.id === currentStudy.id ? { ...s, tolerance: newTol } : s))
     );
+  };
+
+  const handleUpdateOptions = (opts: {
+    method?: 'ANOVA' | 'XBAR_R';
+    studyMultiplier?: number;
+    alphaToPool?: number;
+    processStdDev?: number;
+  }) => {
+    if (opts.method !== undefined) setGrrMethod(opts.method);
+    if (opts.studyMultiplier !== undefined) setGrrMultiplier(opts.studyMultiplier);
+    if (opts.alphaToPool !== undefined) setGrrAlphaToPool(opts.alphaToPool);
+    if ('processStdDev' in opts) setGrrProcessSd(opts.processStdDev);
   };
 
   const handleUpdateType1Params = (ref: number, tol: number) => {
@@ -179,6 +213,11 @@ export const MsaMainView: React.FC = () => {
           result={gageRRResult}
           unit={currentStudy.unit}
           onUpdateTolerance={handleUpdateTolerance}
+          onUpdateOptions={handleUpdateOptions}
+          currentMethod={grrMethod}
+          currentStudyMultiplier={grrMultiplier}
+          currentAlphaToPool={grrAlphaToPool}
+          currentProcessStdDev={grrProcessSd}
         />
       )}
 

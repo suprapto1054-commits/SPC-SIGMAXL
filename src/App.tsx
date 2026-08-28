@@ -26,9 +26,11 @@ import { AIChartInsightCard } from './components/ai/AIChartInsightCard';
 import { AIRootCauseAssistant } from './components/ai/AIRootCauseAssistant';
 import { AIAutoAnalysisReport } from './components/ai/AIAutoAnalysisReport';
 import { AICopilotPanel } from './components/ai/AICopilotPanel';
+import { SmartChartAdvisorView } from './components/advisor/SmartChartAdvisorView';
 import { DataTableView } from './components/data/DataTableView';
 import { DataPreparationView } from './components/data/DataPreparationView';
 import { DataImportModal } from './components/data/DataImportModal';
+import { PanelLeftOpen } from 'lucide-react';
 
 export function App() {
   const [datasets, setDatasets] = useState<Dataset[]>(SAMPLE_DATASETS);
@@ -38,6 +40,8 @@ export function App() {
   const [isCopilotOpen, setIsCopilotOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [selectedPoint, setSelectedPoint] = useState<number | null>(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [autoHideSidebarOnClick, setAutoHideSidebarOnClick] = useState(true);
 
   // Active dataset
   const currentDataset = useMemo(() => {
@@ -146,19 +150,50 @@ export function App() {
         spcResult={spcResult}
         theme={theme}
         onToggleTheme={handleToggleTheme}
+        isSidebarOpen={isSidebarOpen}
+        onToggleSidebar={() => setIsSidebarOpen((v) => !v)}
       />
 
       {/* Main Body */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden relative">
         {/* Navigation Sidebar */}
         <Sidebar
           activeTab={activeTab}
-          onSelectTab={setActiveTab}
+          onSelectTab={(tab) => {
+            setActiveTab(tab);
+            if (autoHideSidebarOnClick) {
+              setIsSidebarOpen(false);
+            }
+          }}
           violationsCount={spcResult.ruleViolations.length}
+          isOpen={isSidebarOpen}
+          onClose={() => setIsSidebarOpen(false)}
+          autoHideOnClick={autoHideSidebarOnClick}
+          onToggleAutoHide={() => setAutoHideSidebarOnClick((v) => !v)}
         />
 
         {/* Content Viewport */}
         <main className="flex-1 overflow-y-auto p-6 space-y-6">
+          {/* Quick Show Menu Bar when sidebar is hidden */}
+          {!isSidebarOpen && (
+            <div className="flex items-center justify-between bg-blue-950/40 border border-blue-900/40 px-3 py-1.5 rounded-lg text-xs font-mono text-blue-200">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setIsSidebarOpen(true)}
+                  className="flex items-center gap-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white font-bold px-2 py-0.5 text-[11px] shadow-xs transition-colors cursor-pointer"
+                >
+                  <PanelLeftOpen className="w-3.5 h-3.5" />
+                  <span>SHOW MENU</span>
+                </button>
+                <span className="text-slate-400">
+                  Current Module: <strong className="text-blue-300 uppercase">{activeTab.replace('-', ' ')}</strong>
+                </span>
+              </div>
+              <span className="text-[10px] text-slate-500 hidden sm:inline">
+                Menu auto-hidden for maximum view space
+              </span>
+            </div>
+          )}
           {/* Sub-Header Column Selector when applicable */}
           {['spc-imr', 'spc-xbar-r', 'spc-xbar-s', 'spc-p', 'spc-c', 'capability', 'descriptive', 'histogram', 'normality'].includes(activeTab) && (
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-slate-800">
@@ -287,6 +322,19 @@ export function App() {
           {/* TAB 9: HYPOTHESIS TESTING & ANOVA */}
           {activeTab === 'hypothesis' && (
             <HypothesisTestView dataset={currentDataset} />
+          )}
+
+          {/* TAB: SMART CHART ADVISOR & RANDOM DATA ANALYZER */}
+          {activeTab === 'chart-advisor' && (
+            <SmartChartAdvisorView
+              dataset={currentDataset}
+              onSelectDataset={(newDs) => {
+                handleImportNewDataset(newDs);
+              }}
+              onNavigateToTab={(tabId) => {
+                setActiveTab(tabId);
+              }}
+            />
           )}
 
           {/* TAB 10: AI EXECUTIVE AUDIT REPORT */}
