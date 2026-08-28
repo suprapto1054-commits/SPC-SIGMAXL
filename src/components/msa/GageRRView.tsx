@@ -9,6 +9,7 @@ import {
   Layers,
   Sliders,
   Settings2,
+  HelpCircle,
 } from 'lucide-react';
 
 interface GageRRViewProps {

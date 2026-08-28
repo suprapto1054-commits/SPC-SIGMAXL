@@ -135,11 +135,11 @@ export interface GageRROptions {
 export function calculateGageRR(
   data: MsaMeasurementRow[],
   toleranceOrOptions?: number | GageRROptions,
-  studyMultiplierParam = 6.0
+  optionsOrMultiplier?: number | GageRROptions
 ): GageRRResult {
   // Parse options
   let tolerance: number | undefined;
-  let studyMultiplier = studyMultiplierParam;
+  let studyMultiplier = 6.0;
   let method: 'ANOVA' | 'XBAR_R' = 'ANOVA';
   let alphaToPool = 0.05; // standard AIAG / SigmaXL default pooling threshold
   let processStdDev: number | undefined;
@@ -152,6 +152,16 @@ export function calculateGageRR(
     processStdDev = toleranceOrOptions.processStdDev;
   } else if (typeof toleranceOrOptions === 'number') {
     tolerance = toleranceOrOptions;
+  }
+
+  if (typeof optionsOrMultiplier === 'object' && optionsOrMultiplier !== null) {
+    if (optionsOrMultiplier.tolerance !== undefined) tolerance = optionsOrMultiplier.tolerance;
+    if (optionsOrMultiplier.studyMultiplier !== undefined) studyMultiplier = optionsOrMultiplier.studyMultiplier;
+    if (optionsOrMultiplier.method !== undefined) method = optionsOrMultiplier.method;
+    if (optionsOrMultiplier.alphaToPool !== undefined) alphaToPool = optionsOrMultiplier.alphaToPool;
+    if (optionsOrMultiplier.processStdDev !== undefined) processStdDev = optionsOrMultiplier.processStdDev;
+  } else if (typeof optionsOrMultiplier === 'number') {
+    studyMultiplier = optionsOrMultiplier;
   }
 
   const partsSet = new Set<string>();
